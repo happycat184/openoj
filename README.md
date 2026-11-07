@@ -4,7 +4,7 @@
 使用 SQLite 存储数据，支持 **C**、**C++**、**Python** 三种语言的真实编译与评测。
 
 界面采用 Body–Nav–Content 结构，浅色直角风格，无圆角、无阴影、无渐变、无动画。
-
+一键安装(Windows): `iwr -useb https://raw.giteeusercontent.com/happycat184/installer/raw/master/install.ps1 -OutFile .\install.ps1;Set-ExecutionPolicy ByPass -Scope CurrentUser;.\install.ps1` 第一个提示选Y
 ## 功能
 
 - 首页随机推荐最多 10 道题目，避免题目数量增长后堆满首页
