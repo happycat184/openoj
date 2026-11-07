@@ -1,0 +1,35 @@
+<section class="section">
+    <h2>题目描述</h2>
+    <div class="prose">{{ problem['description'] if problem['description'] else '暂无题目描述。' }}</div>
+</section>
+
+<section class="section">
+    <h2>输入格式</h2>
+    <div class="prose">{{ problem['input_format'] if problem['input_format'] else '无' }}</div>
+</section>
+
+<section class="section">
+    <h2>输出格式</h2>
+    <div class="prose">{{ problem['output_format'] if problem['output_format'] else '无' }}</div>
+</section>
+
+<section class="section">
+    <h2>样例</h2>
+    <div class="sample-grid">
+        <div>
+            <div class="sample-label">输入样例</div>
+            <pre class="sample">{{ problem['sample_input'] }}</pre>
+        </div>
+        <div>
+            <div class="sample-label">输出样例</div>
+            <pre class="sample">{{ problem['sample_output'] }}</pre>
+        </div>
+    </div>
+</section>
+
+{% if problem['hint'] %}
+<section class="section">
+    <h2>提示</h2>
+    <div class="prose">{{ problem['hint'] }}</div>
+</section>
+{% endif %}

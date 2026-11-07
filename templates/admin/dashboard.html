@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "_macros.html" import verdict_badge, language_label with context %}
+{% block title %}管理控制台 · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>管理控制台</h1>
+        <p class="page-sub">管理题目、测试点与用户权限。</p>
+    </div>
+</div>
+
+{% include "admin/_nav.html" %}
+
+<div class="stat-strip stat-strip-4">
+    <div class="stat-item">
+        <div class="stat-label">注册用户</div>
+        <div class="stat-value">{{ stats.users }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-label">题目总数</div>
+        <div class="stat-value">{{ stats.all_problems }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-label">可见题目</div>
+        <div class="stat-value">{{ stats.problems }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-label">提交总数</div>
+        <div class="stat-value">{{ stats.submissions }}</div>
+    </div>
+</div>
+
+<section class="section">
+    <div class="section-head">
+        <h2>快捷操作</h2>
+    </div>
+    <div class="action-row">
+        <a class="button" href="{{ url_for('admin_problem_new') }}">新建题目</a>
+        <a class="button button-secondary" href="{{ url_for('admin_problem_import') }}">导入题库</a>
+        <a class="button button-secondary" href="{{ url_for('admin_problems') }}">题目管理</a>
+        <a class="button button-secondary" href="{{ url_for('admin_users') }}">用户管理</a>
+        <a class="button button-secondary" href="{{ url_for('submissions') }}">全部提交</a>
+    </div>
+</section>
+
+<section class="section">
+    <div class="section-head">
+        <h2>最近提交</h2>
+        <a class="section-link" href="{{ url_for('submissions') }}">查看全部</a>
+    </div>
+    <table class="data compact">
+        <thead>
+        <tr>
+            <th class="col-id">编号</th>
+            <th>题目</th>
+            <th>用户</th>
+            <th>语言</th>
+            <th>状态</th>
+            <th class="col-time">时间</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for s in recent %}
+            <tr>
+                <td class="mono"><a href="{{ url_for('submission', sid=s['id']) }}">#{{ s['id'] }}</a></td>
+                <td><a href="{{ url_for('problem', pid=s['problem_id']) }}">#{{ s['problem_id'] }} {{ s['problem_title'] }}</a></td>
+                <td>{{ s['username'] }}</td>
+                <td>{{ language_label(s['language']) }}</td>
+                <td>{{ verdict_badge(s['status'], false) }}</td>
+                <td class="mono muted col-time">{{ s['created_at'] }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="6" class="empty-cell">暂无提交。</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endblock %}

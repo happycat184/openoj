@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}注册 · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="auth-panel">
+    <h1>注册账号</h1>
+    <form method="post" action="{{ url_for('register') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-field">
+            <label for="username">用户名</label>
+            <input type="text" id="username" name="username" required autofocus
+                   autocomplete="username" minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+">
+            <p class="form-hint">3–20 位字母、数字或下划线。</p>
+        </div>
+        <div class="form-field">
+            <label for="password">密码</label>
+            <input type="password" id="password" name="password" required minlength="6"
+                   autocomplete="new-password">
+        </div>
+        <div class="form-field">
+            <label for="confirm_password">确认密码</label>
+            <input type="password" id="confirm_password" name="confirm_password" required minlength="6"
+                   autocomplete="new-password">
+        </div>
+        <button class="button button-block" type="submit">注册</button>
+    </form>
+    <p class="auth-switch">已有账号？<a href="{{ url_for('login') }}">直接登录</a></p>
+</div>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}题库 · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>题库</h1>
+        <p class="page-sub">选择题目开始练习。OpenOJ 当前支持 C、C++ 与 Python。</p>
+    </div>
+    {% if g.user and g.user['role'] == 'admin' %}
+        <a class="button button-secondary" href="{{ url_for('admin_problem_new') }}">新建题目</a>
+    {% endif %}
+</div>
+
+<div class="stat-strip">
+    <div class="stat-item">
+        <div class="stat-label">题目</div>
+        <div class="stat-value">{{ stats.problems }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-label">提交</div>
+        <div class="stat-value">{{ stats.submissions }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-label">用户</div>
+        <div class="stat-value">{{ stats.users }}</div>
+    </div>
+</div>
+
+<div class="table-wrap">
+    <table class="data problem-table">
+        <thead>
+        <tr>
+            <th class="col-id">编号</th>
+            <th>题目</th>
+            <th class="col-num">通过率</th>
+            <th class="col-num">时间限制</th>
+            <th class="col-num">内存限制</th>
+            <th class="col-state">我的状态</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for p in problems %}
+            <tr>
+                <td class="mono muted">#{{ p.id }}</td>
+                <td><a class="problem-link" href="{{ url_for('problem', pid=p.id) }}">{{ p.title }}</a></td>
+                <td class="mono col-num">{{ '%.1f%%'|format(p.ac_rate) if p.ac_rate is not none else '—' }}</td>
+                <td class="mono col-num">{{ p.time_limit_ms }} ms</td>
+                <td class="mono col-num">{{ p.memory_limit_kb }} KB</td>
+                <td>
+                    {% if p.user_status == 'solved' %}
+                        <span class="user-state state-solved">已通过</span>
+                    {% elif p.user_status == 'attempted' %}
+                        <span class="user-state state-attempted">尝试过</span>
+                    {% else %}
+                        <span class="muted">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+        {% else %}
+            <tr>
+                <td colspan="6" class="empty-cell">暂无可见题目。</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

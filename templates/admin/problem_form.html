@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}{{ '新建题目' if mode == 'new' else '编辑题目' }} · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>{{ '新建题目' if mode == 'new' else '编辑题目 #' ~ problem['id'] }}</h1>
+        <p class="page-sub">题面支持多行纯文本，换行会原样保留。</p>
+    </div>
+</div>
+
+{% include "admin/_nav.html" %}
+
+<form method="post"
+      action="{{ url_for('admin_problem_new') if mode == 'new' else url_for('admin_problem_edit', pid=problem['id']) }}"
+      class="admin-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <section class="section">
+        <div class="section-head">
+            <h2>基本信息</h2>
+        </div>
+
+        <div class="form-field">
+            <label for="title">题目标题</label>
+            <input type="text" id="title" name="title" required maxlength="200"
+                   value="{{ problem['title'] }}" placeholder="例如：A+B Problem">
+        </div>
+
+        <div class="form-row">
+            <div class="form-field">
+                <label for="time_limit_ms">时间限制（毫秒）</label>
+                <input type="number" id="time_limit_ms" name="time_limit_ms" required
+                       min="100" max="60000" step="100" value="{{ problem['time_limit_ms'] }}">
+            </div>
+            <div class="form-field">
+                <label for="memory_limit_kb">内存限制（KB）</label>
+                <input type="number" id="memory_limit_kb" name="memory_limit_kb" required
+                       min="1024" max="1048576" step="1024" value="{{ problem['memory_limit_kb'] }}">
+            </div>
+        </div>
+
+        <div class="form-field">
+            <label class="checkbox-label">
+                <input type="checkbox" name="is_visible" value="1" {{ 'checked' if problem['is_visible'] else '' }}>
+                在题库中显示此题目
+            </label>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="section-head">
+            <h2>题面</h2>
+        </div>
+
+        <div class="form-field">
+            <label for="description">题目描述</label>
+            <textarea id="description" name="description" rows="9"
+                      placeholder="描述题目背景、任务与要求……">{{ problem['description'] }}</textarea>
+        </div>
+
+        <div class="form-row">
+            <div class="form-field">
+                <label for="input_format">输入格式</label>
+                <textarea id="input_format" name="input_format" rows="5">{{ problem['input_format'] }}</textarea>
+            </div>
+            <div class="form-field">
+                <label for="output_format">输出格式</label>
+                <textarea id="output_format" name="output_format" rows="5">{{ problem['output_format'] }}</textarea>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="section-head">
+            <h2>样例与提示</h2>
+        </div>
+
+        <div class="form-row">
+            <div class="form-field">
+                <label for="sample_input">输入样例</label>
+                <textarea id="sample_input" name="sample_input" rows="7"
+                          class="mono-input" spellcheck="false">{{ problem['sample_input'] }}</textarea>
+            </div>
+            <div class="form-field">
+                <label for="sample_output">输出样例</label>
+                <textarea id="sample_output" name="sample_output" rows="7"
+                          class="mono-input" spellcheck="false">{{ problem['sample_output'] }}</textarea>
+            </div>
+        </div>
+
+        <div class="form-field">
+            <label for="hint">提示（可选）</label>
+            <textarea id="hint" name="hint" rows="4">{{ problem['hint'] }}</textarea>
+        </div>
+    </section>
+
+    <div class="sticky-actions">
+        <button class="button" type="submit">{{ '创建题目' if mode == 'new' else '保存修改' }}</button>
+        <a class="button button-secondary" href="{{ url_for('admin_problems') }}">取消</a>
+        {% if mode == 'edit' %}
+            <a class="text-link" href="{{ url_for('admin_testcases', pid=problem['id']) }}">管理测试点 →</a>
+        {% else %}
+            <span class="form-hint">创建成功后即可添加测试点。</span>
+        {% endif %}
+    </div>
+</form>
+{% endblock %}

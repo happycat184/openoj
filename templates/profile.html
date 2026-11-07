@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% from "_macros.html" import verdict_badge with context %}
+{% block title %}{{ profile_user['username'] }} · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>
+            {{ profile_user['username'] }}
+            {% if profile_user['role'] == 'admin' %}<span class="tag">管理员</span>{% endif %}
+        </h1>
+        <p class="page-sub">注册于 {{ profile_user['created_at'] }}</p>
+    </div>
+    {% if is_self %}
+        <a class="button button-secondary" href="{{ url_for('submissions', user=profile_user['username']) }}">我的全部提交</a>
+    {% endif %}
+</div>
+
+<div class="stat-strip stat-strip-4">
+    <div class="stat-item">
+        <div class="stat-label">通过题目</div>
+        <div class="stat-value">{{ stats.solved }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-label">尝试题目</div>
+        <div class="stat-value">{{ stats.attempted }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-label">提交次数</div>
+        <div class="stat-value">{{ stats.total }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-label">提交通过率</div>
+        <div class="stat-value">{{ '%.1f%%'|format(ac_rate) if ac_rate is not none else '—' }}</div>
+    </div>
+</div>
+
+<div class="split-grid">
+    <section class="section">
+        <div class="section-head">
+            <h2>已通过题目</h2>
+            <span class="section-meta">{{ solved|length }} 题</span>
+        </div>
+        <table class="data compact">
+            <thead>
+            <tr>
+                <th class="col-id">编号</th>
+                <th>题目</th>
+                <th class="col-time">首次通过</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for item in solved %}
+                <tr>
+                    <td class="mono muted">#{{ item['id'] }}</td>
+                    <td><a href="{{ url_for('problem', pid=item['id']) }}">{{ item['title'] }}</a></td>
+                    <td class="mono muted col-time">{{ item['solved_at'] }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="3" class="empty-cell">还没有通过的题目。</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section class="section">
+        <div class="section-head">
+            <h2>最近提交</h2>
+            <span class="section-meta">共 {{ total_submissions }} 次</span>
+        </div>
+        <table class="data compact">
+            <thead>
+            <tr>
+                <th class="col-id">编号</th>
+                <th>题目</th>
+                <th>状态</th>
+                <th class="col-time">时间</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for s in submissions %}
+                <tr>
+                    <td class="mono"><a href="{{ url_for('submission', sid=s['id']) }}">#{{ s['id'] }}</a></td>
+                    <td><a href="{{ url_for('problem', pid=s['problem_id']) }}">#{{ s['problem_id'] }} {{ s['problem_title'] }}</a></td>
+                    <td>{{ verdict_badge(s['status'], false) }}</td>
+                    <td class="mono muted col-time">{{ s['created_at'] }}</td>
+                </tr>
+            {% else %}
+                <tr><td colspan="4" class="empty-cell">暂无提交记录。</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% if total_submissions > 0 %}
+            <p class="section-foot"><a href="{{ url_for('submissions', user=profile_user['username']) }}">查看全部提交 →</a></p>
+        {% endif %}
+    </section>
+</div>
+
+{% if is_self %}
+<section class="section password-section">
+    <div class="section-head">
+        <h2>修改密码</h2>
+    </div>
+    <form method="post" action="{{ url_for('change_password') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-row form-row-3">
+            <div class="form-field">
+                <label for="current_password">当前密码</label>
+                <input type="password" id="current_password" name="current_password" required autocomplete="current-password">
+            </div>
+            <div class="form-field">
+                <label for="new_password">新密码</label>
+                <input type="password" id="new_password" name="new_password" required minlength="6" autocomplete="new-password">
+            </div>
+            <div class="form-field">
+                <label for="confirm_password">确认新密码</label>
+                <input type="password" id="confirm_password" name="confirm_password" required minlength="6" autocomplete="new-password">
+            </div>
+        </div>
+        <div class="form-actions">
+            <button class="button button-secondary" type="submit">更新密码</button>
+            <span class="form-hint">新密码至少 6 个字符。</span>
+        </div>
+    </form>
+</section>
+{% endif %}
+{% endblock %}

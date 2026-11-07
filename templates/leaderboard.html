@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}排行榜 · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>排行榜</h1>
+        <p class="page-sub">按通过题目数降序排列，通过数相同时提交次数少者优先。</p>
+    </div>
+</div>
+
+<div class="table-wrap">
+    <table class="data">
+        <thead>
+        <tr>
+            <th class="col-rank">排名</th>
+            <th>用户</th>
+            <th class="col-num">通过题目</th>
+            <th class="col-num">提交次数</th>
+            <th class="col-num">提交通过率</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for row in rows %}
+            <tr>
+                <td class="mono rank-cell {{ 'rank-top' if loop.index <= 3 else '' }}">{{ loop.index }}</td>
+                <td>
+                    <a href="{{ url_for('user_profile', username=row['username']) }}">{{ row['username'] }}</a>
+                    {% if row['role'] == 'admin' %}<span class="tag">管理员</span>{% endif %}
+                </td>
+                <td class="mono col-num">{{ row['solved'] }}</td>
+                <td class="mono col-num">{{ row['total'] }}</td>
+                <td class="mono col-num">
+                    {{ '%.1f%%'|format(row['ac_total'] / row['total'] * 100) if row['total'] else '—' }}
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="5" class="empty-cell">暂无用户。</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

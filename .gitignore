@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+openoj.db
+openoj.db-shm
+openoj.db-wal
+work/
+.venv/
+venv/

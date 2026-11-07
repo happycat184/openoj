@@ -1,0 +1,20 @@
+{% macro verdict_badge(status, with_label=true) -%}
+    {%- set info = verdicts.get(status, {'label': status, 'en': status, 'color': 'muted'}) -%}
+    <span class="verdict verdict-{{ info.color }}">
+        <span class="verdict-code">{{ status }}</span>
+        {%- if with_label %}<span class="verdict-label">{{ info.label }}</span>{% endif -%}
+    </span>
+{%- endmacro %}
+
+{% macro judge_square(case) -%}
+    <div class="judge-square judge-{{ case['status']|lower }}"
+         title="{{ case['status'] }} · 测试点 {{ case['case_no'] }}">
+        <span class="judge-status">{{ case['status'] }}</span>
+        <span class="judge-meta">{{ '%.2f'|format(case['time_ms']) }}ms/{{ '%.2f'|format(case['memory_kb']) }}KB</span>
+    </div>
+{%- endmacro %}
+
+{% macro language_label(code) -%}
+    {%- set info = languages.get(code) -%}
+    {{ info['label'] if info else code }}
+{%- endmacro %}

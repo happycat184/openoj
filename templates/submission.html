@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% from "_macros.html" import judge_square, language_label with context %}
+{% block title %}提交 #{{ submission['id'] }} · OpenOJ{% endblock %}
+
+{% block content %}
+{% set info = verdicts.get(submission['status'], {'label': submission['status'], 'en': '', 'color': 'muted'}) %}
+{% set is_running = submission['status'] in ('PENDING', 'JUDGING') %}
+
+<div class="breadcrumb">
+    <a href="{{ url_for('submissions') }}">提交记录</a>
+    <span class="breadcrumb-sep">/</span>
+    <span>#{{ submission['id'] }}</span>
+</div>
+
+<div class="verdict-banner banner-{{ info.color }}">
+    <div class="banner-main">
+        <span class="banner-code">{{ submission['status'] }}</span>
+        <span class="banner-label">{{ info.label }}
+            <span class="banner-en">{{ info.en }}</span>
+        </span>
+    </div>
+    <div class="banner-side">
+        {% if is_running %}
+            <span id="judge-live"
+                  data-submission-id="{{ submission['id'] }}"
+                  data-status="{{ submission['status'] }}">评测进行中，页面将自动刷新…</span>
+        {% else %}
+            <span>用时 <strong class="mono">{{ '%.2f'|format(submission['time_ms']) }} ms</strong></span>
+            <span>内存 <strong class="mono">{{ '%.2f'|format(submission['memory_kb']) }} KB</strong></span>
+        {% endif %}
+    </div>
+</div>
+
+<dl class="meta-grid">
+    <div class="meta-item">
+        <dt>题目</dt>
+        <dd><a href="{{ url_for('problem', pid=submission['problem_id']) }}">#{{ submission['problem_id'] }} {{ submission['problem_title'] }}</a></dd>
+    </div>
+    <div class="meta-item">
+        <dt>提交者</dt>
+        <dd><a href="{{ url_for('user_profile', username=submission['username']) }}">{{ submission['username'] }}</a></dd>
+    </div>
+    <div class="meta-item">
+        <dt>语言</dt>
+        <dd>{{ language_label(submission['language']) }}</dd>
+    </div>
+    <div class="meta-item">
+        <dt>提交时间</dt>
+        <dd class="mono">{{ submission['created_at'] }}</dd>
+    </div>
+    <div class="meta-item">
+        <dt>时间限制</dt>
+        <dd class="mono">{{ submission['time_limit_ms'] }} ms</dd>
+    </div>
+    <div class="meta-item">
+        <dt>内存限制</dt>
+        <dd class="mono">{{ submission['memory_limit_kb'] }} KB</dd>
+    </div>
+</dl>
+
+<section class="section">
+    <div class="section-head">
+        <h2>评测点</h2>
+        <span class="section-meta">{{ cases|length }} 个测试点</span>
+    </div>
+    {% if cases %}
+        <div class="judge-grid">
+            {% for case in cases %}
+                {{ judge_square(case) }}
+            {% endfor %}
+        </div>
+    {% elif is_running %}
+        <div class="pending-note">评测进行中，每个测试点的结果将在完成后显示。</div>
+    {% elif submission['status'] == 'CE' %}
+        <div class="pending-note">编译未通过，测试点未运行。</div>
+    {% else %}
+        <div class="pending-note">本次提交没有测试点结果。</div>
+    {% endif %}
+</section>
+
+{% if submission['compile_output'] %}
+<section class="section">
+    <div class="section-head">
+        <h2>{{ '编译输出' if submission['status'] == 'CE' else '附加信息' }}</h2>
+    </div>
+    <pre class="output-box">{{ submission['compile_output'] }}</pre>
+</section>
+{% endif %}
+
+<section class="section">
+    <div class="section-head">
+        <h2>源代码</h2>
+        <span class="section-meta">{{ language_label(submission['language']) }} · {{ submission['source_code'].splitlines()|length }} 行</span>
+    </div>
+    <div class="code-view">
+        {% for line in submission['source_code'].splitlines() %}
+            <div class="code-line">
+                <span class="code-ln">{{ loop.index }}</span>
+                <span class="code-src">{{ line }}</span>
+            </div>
+        {% else %}
+            <div class="code-line">
+                <span class="code-ln">1</span>
+                <span class="code-src"></span>
+            </div>
+        {% endfor %}
+    </div>
+</section>
+
+{% if g.user %}
+<div class="page-actions">
+    <a class="button button-secondary" href="{{ url_for('problem_ide', pid=submission['problem_id']) }}">返回 IDE</a>
+    {% if g.user['role'] == 'admin' %}
+        <form method="post" action="{{ url_for('admin_rejudge', sid=submission['id']) }}"
+              data-confirm="确定要重新评测这次提交吗？">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="button button-secondary" type="submit">重新评测</button>
+        </form>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

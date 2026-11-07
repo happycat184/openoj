@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "_macros.html" import verdict_badge, language_label with context %}
+{% block title %}提交记录 · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>
+            {% if problem %}题目 #{{ problem['id'] }} 的提交
+            {% elif filter_user %}{{ filter_user['username'] }} 的提交
+            {% else %}提交记录{% endif %}
+        </h1>
+        <p class="page-sub">
+            {% if problem %}
+                <a href="{{ url_for('problem', pid=problem['id']) }}">{{ problem['title'] }}</a> ·
+                共 {{ total }} 次提交 · <a href="{{ url_for('submissions') }}">查看全部</a>
+            {% elif filter_user %}
+                共 {{ total }} 次提交 · <a href="{{ url_for('submissions') }}">查看全部</a>
+            {% else %}
+                共 {{ total }} 次提交
+            {% endif %}
+        </p>
+    </div>
+</div>
+
+<div class="table-wrap">
+    <table class="data">
+        <thead>
+        <tr>
+            <th class="col-id">编号</th>
+            <th>题目</th>
+            <th>用户</th>
+            <th>语言</th>
+            <th>状态</th>
+            <th class="col-num">用时</th>
+            <th class="col-num">内存</th>
+            <th class="col-time">提交时间</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for s in submissions %}
+            <tr>
+                <td class="mono"><a href="{{ url_for('submission', sid=s['id']) }}">#{{ s['id'] }}</a></td>
+                <td>
+                    <a href="{{ url_for('problem', pid=s['problem_id']) }}">#{{ s['problem_id'] }} {{ s['problem_title'] }}</a>
+                </td>
+                <td><a href="{{ url_for('user_profile', username=s['username']) }}">{{ s['username'] }}</a></td>
+                <td>{{ language_label(s['language']) }}</td>
+                <td>{{ verdict_badge(s['status']) }}</td>
+                <td class="mono col-num">
+                    {% if s['status'] in ('PENDING', 'JUDGING') %}—{% else %}{{ '%.2f'|format(s['time_ms']) }} ms{% endif %}
+                </td>
+                <td class="mono col-num">
+                    {% if s['status'] in ('PENDING', 'JUDGING') %}—{% else %}{{ '%.2f'|format(s['memory_kb']) }} KB{% endif %}
+                </td>
+                <td class="mono muted col-time">{{ s['created_at'] }}</td>
+            </tr>
+        {% else %}
+            <tr>
+                <td colspan="8" class="empty-cell">暂无提交记录。</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+        <a href="{{ url_for('submissions', page=page - 1, problem=problem['id'] if problem else none, user=filter_user['username'] if filter_user else none) }}">上一页</a>
+    {% else %}
+        <span class="disabled">上一页</span>
+    {% endif %}
+    <span class="page-indicator">第 {{ page }} / {{ pages }} 页</span>
+    {% if page < pages %}
+        <a href="{{ url_for('submissions', page=page + 1, problem=problem['id'] if problem else none, user=filter_user['username'] if filter_user else none) }}">下一页</a>
+    {% else %}
+        <span class="disabled">下一页</span>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}测试点管理 · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>测试点管理</h1>
+        <p class="page-sub">
+            <a href="{{ url_for('problem', pid=problem['id']) }}">#{{ problem['id'] }} {{ problem['title'] }}</a>
+            · 当前 {{ cases|length }} 个测试点
+        </p>
+    </div>
+    <div class="head-actions">
+        <a class="button button-secondary" href="{{ url_for('admin_problem_edit', pid=problem['id']) }}">编辑题目信息</a>
+        <a class="button button-secondary" href="{{ url_for('admin_problems') }}">返回列表</a>
+    </div>
+</div>
+
+{% include "admin/_nav.html" %}
+
+<form method="post" enctype="multipart/form-data" action="{{ url_for('admin_testcases', pid=problem['id']) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="notice">
+        上传的文件会覆盖对应文本框内容；保存后测试点将按当前顺序重新编号为 1…n。
+        删除测试点只需勾选右上角的删除选项。
+    </div>
+
+    <div id="case-rows">
+        {% for case in cases %}
+            <div class="case-row">
+                <div class="case-head">
+                    <span class="case-title">测试点 #{{ case['case_no'] }}</span>
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="delete_{{ case['id'] }}" value="1"> 删除此测试点
+                    </label>
+                </div>
+                <div class="case-grid">
+                    <div class="form-field">
+                        <label for="input_{{ case['id'] }}">输入数据</label>
+                        <textarea id="input_{{ case['id'] }}" class="case-textarea" name="input_{{ case['id'] }}" spellcheck="false">{{ case['input_data'] }}</textarea>
+                        <label class="file-label">
+                            上传 .in 文件覆盖文本
+                            <input type="file" name="infile_{{ case['id'] }}" accept=".in,.txt">
+                        </label>
+                    </div>
+                    <div class="form-field">
+                        <label for="output_{{ case['id'] }}">输出数据</label>
+                        <textarea id="output_{{ case['id'] }}" class="case-textarea" name="output_{{ case['id'] }}" spellcheck="false">{{ case['output_data'] }}</textarea>
+                        <label class="file-label">
+                            上传 .out 文件覆盖文本
+                            <input type="file" name="outfile_{{ case['id'] }}" accept=".out,.txt">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="empty-state">还没有测试点。点击下方「添加测试点」开始创建。</div>
+        {% endfor %}
+    </div>
+
+    <template id="case-row-template">
+        <div class="case-row">
+            <div class="case-head">
+                <span class="case-title">新增测试点</span>
+            </div>
+            <div class="case-grid">
+                <div class="form-field">
+                    <label>输入数据</label>
+                    <textarea class="case-textarea" name="new_input" spellcheck="false" placeholder="输入数据……"></textarea>
+                    <label class="file-label">
+                        上传 .in 文件
+                        <input type="file" name="new_input_file" accept=".in,.txt">
+                    </label>
+                </div>
+                <div class="form-field">
+                    <label>输出数据</label>
+                    <textarea class="case-textarea" name="new_output" spellcheck="false" placeholder="期望输出……"></textarea>
+                    <label class="file-label">
+                        上传 .out 文件
+                        <input type="file" name="new_output_file" accept=".out,.txt">
+                    </label>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <div class="case-actions">
+        <button type="button" class="button button-secondary" id="add-case-row">添加测试点</button>
+        <button type="submit" class="button">保存测试点</button>
+        <span class="form-hint">输入与输出均为空的条目在保存时会被忽略。</span>
+    </div>
+</form>
+{% endblock %}

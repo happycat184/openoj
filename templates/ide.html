@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}编写 · {{ problem['title'] }} · OpenOJ{% endblock %}
+{% block content_class %}ide-content{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block content %}
+<div class="ide-workspace">
+    <section class="ide-problem-pane">
+        <div class="ide-problem-head">
+            <div class="breadcrumb">
+                <a href="{{ url_for('index') }}">题库</a>
+                <span class="breadcrumb-sep">/</span>
+                <a href="{{ url_for('problem', pid=problem['id']) }}">#{{ problem['id'] }}</a>
+                <span class="breadcrumb-sep">/</span>
+                <span>IDE</span>
+            </div>
+            <h1>{{ problem['title'] }}</h1>
+            <p class="page-sub meta-inline">
+                <span>时间限制 <strong class="mono">{{ problem['time_limit_ms'] }} ms</strong></span>
+                <span>内存限制 <strong class="mono">{{ problem['memory_limit_kb'] }} KB</strong></span>
+                <span>通过率 <strong class="mono">{{ '%.1f%%'|format(ac_rate) if ac_rate is not none else '—' }}</strong></span>
+            </p>
+        </div>
+        <div class="ide-problem-body">
+            {% if stats['case_count'] == 0 %}
+                <div class="notice">该题目尚未配置测试点，提交后无法评测。</div>
+            {% endif %}
+            {% include "_problem_body.html" %}
+        </div>
+    </section>
+
+    <form method="post" action="{{ url_for('submit') }}" id="submit-form" class="ide-editor-pane">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="problem_id" value="{{ problem['id'] }}">
+        <input type="hidden" name="source" value="ide">
+
+        <div class="ide-toolbar">
+            <label for="language" class="inline-label">语言</label>
+            <select name="language" id="language">
+                {% for code, info in languages.items() %}
+                    <option value="{{ code }}" {{ 'selected' if code == 'cpp' else '' }}>
+                        {{ info['label'] }}（{{ info['runtime'] }}）
+                    </option>
+                {% endfor %}
+            </select>
+            <span class="ide-draft">草稿自动保存</span>
+            <span class="ide-cursor" id="editor-cursor">行 1，列 1</span>
+            <button class="button" type="submit">提交评测</button>
+        </div>
+
+        <div class="editor-shell">
+            <div class="editor-gutter" id="editor-gutter" aria-hidden="true"></div>
+            <div class="editor-wrap" id="editor-wrap">
+                <textarea id="code-editor" name="code" class="ide-code" spellcheck="false"
+                          wrap="off" autocapitalize="off" autocomplete="off"
+                          data-problem-id="{{ problem['id'] }}"
+                          placeholder="在此编写代码……"></textarea>
+                <div class="completion-popup" id="completion-popup" hidden>
+                    <div class="completion-list" id="completion-list" role="listbox" aria-label="语法补全"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="ide-statusbar">
+            <span>Enter 自动缩进 · Ctrl+Enter 提交 · Ctrl+Space 补全</span>
+            <span>{{ problem['time_limit_ms'] }} ms / {{ problem['memory_limit_kb'] }} KB</span>
+        </div>
+    </form>
+</div>
+{% endblock %}

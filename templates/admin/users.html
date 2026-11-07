@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}用户管理 · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>用户管理</h1>
+        <p class="page-sub">共 {{ users|length }} 位注册用户。管理员可访问管理后台并管理题目。</p>
+    </div>
+</div>
+
+{% include "admin/_nav.html" %}
+
+<div class="table-wrap">
+    <table class="data">
+        <thead>
+        <tr>
+            <th class="col-id">编号</th>
+            <th>用户名</th>
+            <th>角色</th>
+            <th class="col-time">注册时间</th>
+            <th class="col-num">通过题目</th>
+            <th class="col-num">提交次数</th>
+            <th class="col-actions">操作</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for u in users %}
+            <tr>
+                <td class="mono muted">#{{ u['id'] }}</td>
+                <td><a href="{{ url_for('user_profile', username=u['username']) }}">{{ u['username'] }}</a></td>
+                <td>
+                    {% if u['role'] == 'admin' %}
+                        <span class="tag">管理员</span>
+                    {% else %}
+                        <span class="muted">普通用户</span>
+                    {% endif %}
+                </td>
+                <td class="mono muted col-time">{{ u['created_at'] }}</td>
+                <td class="mono col-num">{{ u['solved'] }}</td>
+                <td class="mono col-num">{{ u['total'] }}</td>
+                <td class="col-actions">
+                    {% if u['id'] == g.user['id'] %}
+                        <span class="muted">当前账号</span>
+                    {% else %}
+                        <form method="post" action="{{ url_for('admin_user_role', uid=u['id']) }}"
+                              data-confirm="确定要修改用户 {{ u['username'] }} 的角色吗？">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="text-button">
+                                {{ '设为普通用户' if u['role'] == 'admin' else '设为管理员' }}
+                            </button>
+                        </form>
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

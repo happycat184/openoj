@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}导入题库 · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>导入题库</h1>
+        <p class="page-sub">从 JSON 文件批量导入题目与测试点，采用追加方式，不会覆盖现有题目。</p>
+    </div>
+    <div class="head-actions">
+        <a class="button button-secondary" href="{{ url_for('admin_problem_import_sample') }}">下载示例 JSON</a>
+        <a class="button button-secondary" href="{{ url_for('admin_problems') }}">返回题目管理</a>
+    </div>
+</div>
+
+{% include "admin/_nav.html" %}
+
+<form method="post" enctype="multipart/form-data" action="{{ url_for('admin_problem_import') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <section class="section">
+        <div class="section-head">
+            <h2>题库数据</h2>
+        </div>
+
+        <div class="form-field">
+            <label for="json_file">JSON 文件</label>
+            <input type="file" id="json_file" name="json_file" accept=".json,application/json">
+            <p class="form-hint">上限 8 MB；若选择文件，将优先使用文件内容。</p>
+        </div>
+
+        <div class="form-field">
+            <label for="json_text">或粘贴 JSON 内容</label>
+            <textarea id="json_text" name="json_text" rows="18" class="mono-input"
+                      spellcheck="false" placeholder='{"problems": [ ... ]}'>{{ json_text }}</textarea>
+        </div>
+
+        <div class="form-actions">
+            <button class="button" type="submit">开始导入</button>
+            <span class="form-hint">全部题目校验通过后才会写入数据库；任一题目有误则整批取消。</span>
+        </div>
+    </section>
+</form>
+
+<details class="format-help">
+    <summary>JSON 格式说明</summary>
+    <p class="form-hint">
+        根节点可以是包含 <code>problems</code> 数组的对象，也可以直接是题目数组；
+        每道题必须包含 <code>title</code> 与至少一个 <code>test_cases</code>。
+        测试点的 <code>input</code> / <code>output</code> 需为字符串（换行写为 <code>\n</code>）。
+    </p>
+<pre class="sample">{
+  "problems": [
+    {
+      "title": "A+B Problem",
+      "description": "输入两个整数 a 和 b，输出它们的和。",
+      "input_format": "一行，包含两个整数 a 和 b。",
+      "output_format": "输出一个整数，表示 a + b。",
+      "sample_input": "1 2\n",
+      "sample_output": "3\n",
+      "hint": "",
+      "time_limit_ms": 1000,
+      "memory_limit_kb": 65536,
+      "is_visible": true,
+      "test_cases": [
+        { "input": "1 2\n", "output": "3\n" },
+        { "input": "-5 7\n", "output": "2\n" }
+      ]
+    }
+  ]
+}</pre>
+</details>
+{% endblock %}

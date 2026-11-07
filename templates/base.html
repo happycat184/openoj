@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}OpenOJ{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<header class="site-nav">
+    <div class="nav-inner">
+        <a class="brand" href="{{ url_for('index') }}">
+            <span class="brand-mark" aria-hidden="true"></span><span>Open<span class="brand-accent">OJ</span></span>
+        </a>
+        {% set ep = request.endpoint or '' %}
+        <nav class="nav-links" aria-label="主导航">
+            <a href="{{ url_for('index') }}" class="{{ 'active' if ep in ['index', 'problem', 'problem_ide'] else '' }}">题目</a>
+            <a href="{{ url_for('submissions') }}" class="{{ 'active' if ep in ['submissions', 'submission'] else '' }}">提交记录</a>
+            <a href="{{ url_for('leaderboard') }}" class="{{ 'active' if ep == 'leaderboard' else '' }}">排行榜</a>
+        </nav>
+        <div class="nav-user">
+            {% if g.user %}
+                {% if g.user['role'] == 'admin' %}
+                    <a class="nav-plain {{ 'active' if ep.startswith('admin') else '' }}" href="{{ url_for('admin_dashboard') }}">管理</a>
+                {% endif %}
+                <a class="nav-username" href="{{ url_for('user_profile', username=g.user['username']) }}">{{ g.user['username'] }}</a>
+                <form method="post" action="{{ url_for('logout') }}" class="inline-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="link-button">退出</button>
+                </form>
+            {% else %}
+                <a class="nav-plain" href="{{ url_for('login') }}">登录</a>
+                <a class="button button-small" href="{{ url_for('register') }}">注册</a>
+            {% endif %}
+        </div>
+    </div>
+</header>
+
+<main class="content {% block content_class %}{% endblock %}">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-list" role="status">
+                {% for category, message in messages %}
+                    <div class="flash flash-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+</main>
+
+{% block footer %}
+<footer class="site-footer">
+    <div class="footer-inner">
+        <span>OpenOJ · Online Judge</span>
+    </div>
+</footer>
+{% endblock %}
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
