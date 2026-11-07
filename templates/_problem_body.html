@@ -1,16 +1,16 @@
 <section class="section">
     <h2>题目描述</h2>
-    <div class="prose">{{ problem['description'] if problem['description'] else '暂无题目描述。' }}</div>
+    <div class="md">{{ (problem['description'] if problem['description'] else '暂无题目描述。')|markdown }}</div>
 </section>
 
 <section class="section">
     <h2>输入格式</h2>
-    <div class="prose">{{ problem['input_format'] if problem['input_format'] else '无' }}</div>
+    <div class="md">{{ (problem['input_format'] if problem['input_format'] else '无')|markdown }}</div>
 </section>
 
 <section class="section">
     <h2>输出格式</h2>
-    <div class="prose">{{ problem['output_format'] if problem['output_format'] else '无' }}</div>
+    <div class="md">{{ (problem['output_format'] if problem['output_format'] else '无')|markdown }}</div>
 </section>
 
 <section class="section">
@@ -30,6 +30,6 @@
 {% if problem['hint'] %}
 <section class="section">
     <h2>提示</h2>
-    <div class="prose">{{ problem['hint'] }}</div>
+    <div class="md">{{ problem['hint']|markdown }}</div>
 </section>
 {% endif %}

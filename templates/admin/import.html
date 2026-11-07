@@ -24,6 +24,19 @@
         </div>
 
         <div class="form-field">
+            <label for="bank_id">目标题库</label>
+            <select id="bank_id" name="bank_id" required>
+                {% if not banks %}
+                    <option value="">暂无题库，请先创建题库</option>
+                {% endif %}
+                {% for b in banks %}
+                    <option value="{{ b['id'] }}" {{ 'selected' if b['id'] == selected_bank_id else '' }}>{{ b['name'] }}</option>
+                {% endfor %}
+            </select>
+            <p class="form-hint">本次导入的所有题目都会归入该题库。</p>
+        </div>
+
+        <div class="form-field">
             <label for="json_file">JSON 文件</label>
             <input type="file" id="json_file" name="json_file" accept=".json,application/json">
             <p class="form-hint">上限 8 MB；若选择文件，将优先使用文件内容。</p>
@@ -46,13 +59,15 @@
     <summary>JSON 格式说明</summary>
     <p class="form-hint">
         根节点可以是包含 <code>problems</code> 数组的对象，也可以直接是题目数组；
-        每道题必须包含 <code>title</code> 与至少一个 <code>test_cases</code>。
+        每道题必须包含 <code>title</code> 与至少一个 <code>test_cases</code>；
+        可选 <code>difficulty</code> 为 入门 / 简单 / 中等 / 困难。
         测试点的 <code>input</code> / <code>output</code> 需为字符串（换行写为 <code>\n</code>）。
     </p>
 <pre class="sample">{
   "problems": [
     {
       "title": "A+B Problem",
+      "difficulty": "入门",
       "description": "输入两个整数 a 和 b，输出它们的和。",
       "input_format": "一行，包含两个整数 a 和 b。",
       "output_format": "输出一个整数，表示 a + b。",

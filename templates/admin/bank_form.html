@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ '新建题库' if mode == 'new' else '编辑题库' }} · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>{{ '新建题库' if mode == 'new' else '编辑题库 #' ~ bank['id'] }}</h1>
+        <p class="page-sub">题库用于归类题目，名称不可重复。</p>
+    </div>
+</div>
+
+{% include "admin/_nav.html" %}
+
+<form method="post"
+      action="{{ url_for('admin_bank_new') if mode == 'new' else url_for('admin_bank_edit', bid=bank['id']) }}"
+      class="admin-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <section class="section">
+        <div class="section-head">
+            <h2>题库信息</h2>
+        </div>
+
+        <div class="form-field">
+            <label for="name">题库名称</label>
+            <input type="text" id="name" name="name" required maxlength="100"
+                   value="{{ bank['name'] }}" placeholder="例如：入门训练">
+        </div>
+
+        <div class="form-field">
+            <label for="description">题库简介（可选）</label>
+            <textarea id="description" name="description" rows="4" maxlength="2000"
+                      placeholder="简要说明该题库的题目主题或难度……">{{ bank['description'] }}</textarea>
+        </div>
+    </section>
+
+    <div class="sticky-actions">
+        <button class="button" type="submit">{{ '创建题库' if mode == 'new' else '保存修改' }}</button>
+        <a class="button button-secondary" href="{{ url_for('admin_banks') }}">取消</a>
+        {% if mode == 'edit' %}
+            <a class="text-link" href="{{ url_for('admin_problems', bank=bank['id']) }}">管理该题库题目 →</a>
+        {% endif %}
+    </div>
+</form>
+{% endblock %}

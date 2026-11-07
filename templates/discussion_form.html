@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}发布题解/讨论 · {{ problem['title'] }} · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="{{ url_for('index') }}">题库</a>
+    <span class="breadcrumb-sep">/</span>
+    <a href="{{ url_for('problem', pid=problem['id']) }}">#{{ problem['id'] }} {{ problem['title'] }}</a>
+    <span class="breadcrumb-sep">/</span>
+    <a href="{{ url_for('discussions', pid=problem['id']) }}">题解/讨论</a>
+    <span class="breadcrumb-sep">/</span>
+    <span>发布</span>
+</div>
+
+<div class="page-head">
+    <div>
+        <h1>发布题解 / 讨论</h1>
+        <p class="page-sub">内容会立即公开显示，无需审核。请勿发布无关或侵权内容。</p>
+    </div>
+</div>
+
+<form method="post" action="{{ url_for('discussion_new', pid=problem['id']) }}" class="admin-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <section class="section">
+        <div class="section-head">
+            <h2>内容</h2>
+        </div>
+
+        <div class="form-row">
+            <div class="form-field">
+                <label for="kind">类型</label>
+                <select id="kind" name="kind">
+                    <option value="discussion" {{ 'selected' if form['kind'] == 'discussion' else '' }}>讨论</option>
+                    <option value="solution" {{ 'selected' if form['kind'] == 'solution' else '' }}>题解</option>
+                </select>
+            </div>
+            <div class="form-field">
+                <label for="title">标题</label>
+                <input type="text" id="title" name="title" required maxlength="120"
+                       value="{{ form['title'] }}" placeholder="用一句话概括主题">
+            </div>
+        </div>
+
+        <div class="form-field">
+            <label for="content">正文</label>
+            <textarea id="content" name="content" rows="16" required
+                      placeholder="支持 Markdown 与 LaTeX，例如 $O(n\log n)$、```cpp 代码块。">{{ form['content'] }}</textarea>
+            <p class="form-hint">正文支持 Markdown 与 LaTeX，最长 20000 个字符。</p>
+        </div>
+
+        <div class="form-actions">
+            <button class="button" type="submit">立即发布</button>
+            <a class="button button-secondary" href="{{ url_for('discussions', pid=problem['id']) }}">取消</a>
+        </div>
+    </section>
+</form>
+{% endblock %}

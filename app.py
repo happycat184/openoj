@@ -28,6 +28,8 @@ from flask import (
     session,
     url_for,
 )
+from markdown_it import MarkdownIt
+from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
@@ -42,6 +44,32 @@ app.config["PER_PAGE"] = 20
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,20}$")
+
+DIFFICULTIES = {
+    "入门": {"slug": "entry", "order": 1},
+    "简单": {"slug": "easy", "order": 2},
+    "中等": {"slug": "medium", "order": 3},
+    "困难": {"slug": "hard", "order": 4},
+}
+DIFFICULTY_NAMES = list(DIFFICULTIES)
+DEFAULT_DIFFICULTY = "简单"
+
+_markdown = MarkdownIt(
+    "commonmark",
+    {"html": False, "breaks": True, "linkify": False, "typographer": False},
+)
+_markdown.enable("table")
+_markdown.enable("strikethrough")
+
+
+def render_markdown(text):
+    return Markup(_markdown.render(text or ""))
+
+
+app.jinja_env.filters["markdown"] = render_markdown
+app.jinja_env.filters["difficulty_slug"] = lambda value: DIFFICULTIES.get(
+    value, DIFFICULTIES[DEFAULT_DIFFICULTY]
+)["slug"]
 
 
 def _detect_version(command, prefix):
@@ -87,7 +115,9 @@ VERDICTS = {
 }
 
 PROBLEM_DEFAULTS = {
+    "bank_id": None,
     "title": "",
+    "difficulty": DEFAULT_DIFFICULTY,
     "description": "",
     "input_format": "",
     "output_format": "",
@@ -97,6 +127,11 @@ PROBLEM_DEFAULTS = {
     "time_limit_ms": 1000,
     "memory_limit_kb": 65536,
     "is_visible": 1,
+}
+
+BANK_DEFAULTS = {
+    "name": "",
+    "description": "",
 }
 
 
@@ -134,6 +169,10 @@ def _inject_globals():
     return {
         "verdicts": VERDICTS,
         "languages": LANGUAGE_INFO,
+        "difficulties": DIFFICULTIES,
+        "difficulty_names": DIFFICULTY_NAMES,
+        "default_difficulty": DEFAULT_DIFFICULTY,
+        "discussion_kinds": DISCUSSION_KINDS,
         "csrf_token": _csrf_token,
     }
 
@@ -202,7 +241,9 @@ def _read_upload(file_storage):
 def _problem_form_data():
     """从表单读取并校验题目字段，返回 (data, errors)。"""
     raw = {
+        "bank_id": request.form.get("bank_id", "").strip(),
         "title": request.form.get("title", "").strip(),
+        "difficulty": request.form.get("difficulty", DEFAULT_DIFFICULTY).strip(),
         "description": request.form.get("description", ""),
         "input_format": request.form.get("input_format", ""),
         "output_format": request.form.get("output_format", ""),
@@ -214,10 +255,23 @@ def _problem_form_data():
         "is_visible": 1 if request.form.get("is_visible") else 0,
     }
     errors = []
+
+    try:
+        bank_id = int(raw["bank_id"])
+    except (TypeError, ValueError):
+        bank_id = None
+    if bank_id is None or db.get_bank(bank_id) is None:
+        errors.append("请选择有效的目标题库。")
+        bank_id = None
+
     if not raw["title"]:
         errors.append("题目标题不能为空。")
     elif len(raw["title"]) > 200:
         errors.append("题目标题不能超过 200 个字符。")
+
+    if raw["difficulty"] not in DIFFICULTIES:
+        errors.append("请选择有效的题目难度。")
+        raw["difficulty"] = DEFAULT_DIFFICULTY
 
     time_limit = _parse_positive_int(raw["time_limit_ms"], 1000, 100, 60000)
     if str(time_limit) != raw["time_limit_ms"]:
@@ -227,9 +281,24 @@ def _problem_form_data():
         errors.append("内存限制需为 1024–1048576 之间的整数（KB）。")
 
     data = dict(raw)
+    data["bank_id"] = bank_id
     data["time_limit_ms"] = time_limit
     data["memory_limit_kb"] = memory_limit
     return data, errors
+
+
+def _bank_form_data():
+    """从表单读取并校验题库字段，返回 (data, errors)。"""
+    name = request.form.get("name", "").strip()
+    description = request.form.get("description", "").strip()
+    errors = []
+    if not name:
+        errors.append("题库名称不能为空。")
+    elif len(name) > 100:
+        errors.append("题库名称不能超过 100 个字符。")
+    if len(description) > 2000:
+        errors.append("题库简介不能超过 2000 个字符。")
+    return {"name": name, "description": description}, errors
 
 
 MAX_IMPORT_PROBLEMS = 500
@@ -242,6 +311,7 @@ IMPORT_SAMPLE = {
     "problems": [
         {
             "title": "导入示例：A+B",
+            "difficulty": "入门",
             "description": "输入两个整数 a 和 b，输出它们的和。",
             "input_format": "一行，包含两个整数 a 和 b，以空格分隔。",
             "output_format": "输出一个整数，表示 a + b。",
@@ -258,6 +328,7 @@ IMPORT_SAMPLE = {
         },
         {
             "title": "导入示例：回文串判断",
+            "difficulty": "简单",
             "description": "给定一个不含空格的字符串，判断它是否为回文串。",
             "input_format": "一行字符串 s（1 ≤ |s| ≤ 1000）。",
             "output_format": "是回文串输出 YES，否则输出 NO。",
@@ -332,6 +403,20 @@ def _parse_import_problem(raw, number, errors):
         errors.append(f"{label}：is_visible 必须是布尔值或 0/1。")
         is_visible = 1
 
+    difficulty_value = raw.get("difficulty", DEFAULT_DIFFICULTY)
+    if not isinstance(difficulty_value, str):
+        errors.append(f"{label}：difficulty 必须是字符串。")
+        difficulty = DEFAULT_DIFFICULTY
+    else:
+        aliases = {
+            "beginner": "入门", "easy": "简单", "medium": "中等", "hard": "困难",
+            "入门": "入门", "简单": "简单", "中等": "中等", "困难": "困难",
+        }
+        difficulty = aliases.get(difficulty_value.strip().lower(), difficulty_value.strip())
+        if difficulty not in DIFFICULTIES:
+            errors.append(f"{label}：difficulty 必须是 入门/简单/中等/困难 之一。")
+            difficulty = DEFAULT_DIFFICULTY
+
     cases_value = raw.get("test_cases")
     test_cases = []
     if not isinstance(cases_value, list) or not cases_value:
@@ -358,6 +443,7 @@ def _parse_import_problem(raw, number, errors):
 
     return {
         "title": title,
+        "difficulty": difficulty,
         "description": description,
         "input_format": input_format,
         "output_format": output_format,
@@ -402,9 +488,7 @@ def _parse_problem_bank(payload):
 
 # ---------------------------------------------------------------- public pages
 
-@app.route("/")
-def index():
-    problems = db.list_problems(include_hidden=False)
+def _decorate_problem_rows(problems):
     solved, attempted = set(), set()
     if g.user is not None:
         solved, attempted = db.user_problem_statuses(g.user["id"])
@@ -424,8 +508,125 @@ def index():
         else:
             item["user_status"] = None
         rows.append(item)
+    return rows
 
-    return render_template("index.html", problems=rows, stats=db.site_stats())
+
+def _problem_rows(bank_id=None):
+    return _decorate_problem_rows(
+        db.list_problems(include_hidden=False, bank_id=bank_id)
+    )
+
+
+@app.route("/")
+def index():
+    banks = db.list_banks()
+    progress = db.user_bank_progress(g.user["id"]) if g.user is not None else {}
+
+    bank_rows = []
+    for bank_row in banks:
+        item = dict(bank_row)
+        user_progress = progress.get(bank_row["id"], {})
+        item["solved"] = user_progress.get("solved", 0)
+        item["attempted"] = user_progress.get("attempted", 0)
+        bank_rows.append(item)
+
+    random_rows = _decorate_problem_rows(db.random_problems(limit=10))
+    return render_template(
+        "index.html",
+        banks=bank_rows,
+        random_problems=random_rows,
+        stats=db.site_stats(),
+    )
+
+
+@app.route("/search")
+def search():
+    query = request.args.get("q", "").strip()[:100]
+    if not query:
+        return redirect(url_for("index"))
+
+    difficulty = request.args.get("difficulty", "").strip()
+    if difficulty not in DIFFICULTIES:
+        difficulty = ""
+    selected_bank_id = request.args.get("bank", type=int)
+    selected_bank = db.get_bank(selected_bank_id) if selected_bank_id is not None else None
+    if selected_bank is None:
+        selected_bank_id = None
+
+    page = max(1, request.args.get("page", 1, type=int) or 1)
+    per_page = app.config["PER_PAGE"]
+
+    def fetch(target_page):
+        return db.search_problems(
+            query,
+            page=target_page,
+            per_page=per_page,
+            difficulty=difficulty or None,
+            bank_id=selected_bank_id,
+        )
+
+    rows, total = fetch(page)
+    pages = max(1, math.ceil(total / per_page))
+    if page > pages:
+        page = pages
+        rows, total = fetch(page)
+
+    return render_template(
+        "search.html",
+        query=query,
+        problems=_decorate_problem_rows(rows),
+        total=total,
+        page=page,
+        pages=pages,
+        banks=db.list_banks(),
+        selected_bank=selected_bank,
+        selected_difficulty=difficulty,
+    )
+
+
+@app.route("/bank/<int:bid>")
+def bank(bid):
+    bank_row = db.get_bank(bid)
+    if bank_row is None:
+        abort(404)
+
+    difficulty = request.args.get("difficulty", "").strip()
+    if difficulty not in DIFFICULTIES:
+        difficulty = ""
+    status = request.args.get("status", "").strip()
+    if status not in ("solved", "attempted", "unsolved") or g.user is None:
+        status = ""
+
+    page = max(1, request.args.get("page", 1, type=int) or 1)
+    per_page = app.config["PER_PAGE"]
+
+    def fetch(target_page):
+        return db.query_problems(
+            include_hidden=False,
+            bank_id=bid,
+            difficulty=difficulty or None,
+            status=status or None,
+            user_id=g.user["id"] if g.user is not None else None,
+            page=target_page,
+            per_page=per_page,
+        )
+
+    rows, total = fetch(page)
+    pages = max(1, math.ceil(total / per_page))
+    if page > pages:
+        page = pages
+        rows, total = fetch(page)
+
+    return render_template(
+        "bank.html",
+        bank=bank_row,
+        problems=_decorate_problem_rows(rows),
+        total=total,
+        page=page,
+        pages=pages,
+        selected_difficulty=difficulty,
+        selected_status=status,
+    )
 
 
 @app.route("/problem/<int:pid>")
@@ -447,6 +648,7 @@ def problem(pid):
         problem=row,
         stats=stats,
         ac_rate=ac_rate,
+        discussion_count=db.discussion_count(pid),
         is_admin_view=bool(g.user is not None and g.user["role"] == "admin" and not row["is_visible"]),
     )
 
@@ -467,6 +669,142 @@ def problem_ide(pid):
         else None
     )
     return render_template("ide.html", problem=row, stats=stats, ac_rate=ac_rate)
+
+
+DISCUSSION_KINDS = {"solution": "题解", "discussion": "讨论"}
+DISCUSSION_TITLE_LIMIT = 120
+DISCUSSION_CONTENT_LIMIT = 20000
+
+
+def _visible_problem_or_404(pid):
+    row = db.get_problem(pid)
+    if row is None:
+        abort(404)
+    if not row["is_visible"] and (g.user is None or g.user["role"] != "admin"):
+        abort(404)
+    return row
+
+
+def _discussion_or_404(did):
+    discussion = db.get_discussion(did)
+    if discussion is None:
+        abort(404)
+    _visible_problem_or_404(discussion["problem_id"])
+    return discussion
+
+
+@app.route("/problem/<int:pid>/discussions")
+def discussions(pid):
+    problem_row = _visible_problem_or_404(pid)
+    page = max(1, request.args.get("page", 1, type=int) or 1)
+    per_page = app.config["PER_PAGE"]
+    rows, total = db.list_discussions(pid, page=page, per_page=per_page)
+    pages = max(1, math.ceil(total / per_page))
+    if page > pages:
+        page = pages
+        rows, total = db.list_discussions(pid, page=page, per_page=per_page)
+    return render_template(
+        "discussions.html",
+        problem=problem_row,
+        discussions=rows,
+        total=total,
+        page=page,
+        pages=pages,
+    )
+
+
+@app.route("/problem/<int:pid>/discussions/new", methods=["GET", "POST"])
+@login_required
+def discussion_new(pid):
+    problem_row = _visible_problem_or_404(pid)
+    form_data = {"kind": "discussion", "title": "", "content": ""}
+    if request.method == "POST":
+        form_data = {
+            "kind": request.form.get("kind", "discussion").strip(),
+            "title": request.form.get("title", "").strip(),
+            "content": request.form.get("content", "").strip(),
+        }
+        errors = []
+        if form_data["kind"] not in DISCUSSION_KINDS:
+            errors.append("请选择发布类型。")
+        if not form_data["title"]:
+            errors.append("标题不能为空。")
+        elif len(form_data["title"]) > DISCUSSION_TITLE_LIMIT:
+            errors.append(f"标题不能超过 {DISCUSSION_TITLE_LIMIT} 个字符。")
+        if not form_data["content"]:
+            errors.append("内容不能为空。")
+        elif len(form_data["content"]) > DISCUSSION_CONTENT_LIMIT:
+            errors.append(f"内容不能超过 {DISCUSSION_CONTENT_LIMIT} 个字符。")
+        if errors:
+            for error in errors:
+                flash(error, "error")
+        else:
+            did = db.create_discussion(
+                pid, g.user["id"], form_data["kind"],
+                form_data["title"], form_data["content"],
+            )
+            flash("发布成功。", "success")
+            return redirect(url_for("discussion_detail", did=did))
+    return render_template("discussion_form.html", problem=problem_row, form=form_data)
+
+
+@app.route("/discussion/<int:did>")
+def discussion_detail(did):
+    discussion = _discussion_or_404(did)
+    problem_row = db.get_problem(discussion["problem_id"])
+    replies = db.list_replies(did)
+    return render_template(
+        "discussion.html",
+        discussion=discussion,
+        problem=problem_row,
+        replies=replies,
+        can_manage=bool(
+            g.user is not None
+            and (g.user["id"] == discussion["user_id"] or g.user["role"] == "admin")
+        ),
+    )
+
+
+@app.route("/discussion/<int:did>/reply", methods=["POST"])
+@login_required
+def discussion_reply(did):
+    discussion = _discussion_or_404(did)
+    content = request.form.get("content", "").strip()
+    if not content:
+        flash("回复内容不能为空。", "error")
+    elif len(content) > DISCUSSION_CONTENT_LIMIT:
+        flash(f"回复不能超过 {DISCUSSION_CONTENT_LIMIT} 个字符。", "error")
+    else:
+        reply_id = db.create_reply(did, g.user["id"], content)
+        flash("回复成功。", "success")
+        return redirect(url_for("discussion_detail", did=did, _anchor=f"reply-{reply_id}"))
+    return redirect(url_for("discussion_detail", did=did))
+
+
+@app.route("/discussion/<int:did>/delete", methods=["POST"])
+@login_required
+def discussion_delete(did):
+    discussion = _discussion_or_404(did)
+    if g.user["id"] != discussion["user_id"] and g.user["role"] != "admin":
+        abort(403)
+    problem_id = discussion["problem_id"]
+    db.delete_discussion(did)
+    flash("主题已删除。", "success")
+    return redirect(url_for("discussions", pid=problem_id))
+
+
+@app.route("/discussion/reply/<int:rid>/delete", methods=["POST"])
+@login_required
+def discussion_reply_delete(rid):
+    reply = db.get_reply(rid)
+    if reply is None:
+        abort(404)
+    discussion = _discussion_or_404(reply["discussion_id"])
+    if g.user["id"] != reply["user_id"] and g.user["role"] != "admin":
+        abort(403)
+    db.delete_reply(rid)
+    flash("回复已删除。", "success")
+    return redirect(url_for("discussion_detail", did=discussion["id"]))
 
 
 @app.route("/submit", methods=["POST"])
@@ -707,72 +1045,214 @@ def logout():
 def admin_dashboard():
     stats = db.site_stats()
     recent, _ = db.list_submissions(page=1, per_page=8)
-    return render_template("admin/dashboard.html", stats=stats, recent=recent)
+    return render_template(
+        "admin/dashboard.html",
+        stats=stats,
+        recent=recent,
+        judge_queue=judge.queue_stats(),
+    )
+
+
+@app.route("/admin/banks")
+@admin_required
+def admin_banks():
+    return render_template("admin/banks.html", banks=db.list_banks())
+
+
+@app.route("/admin/banks/new", methods=["GET", "POST"])
+@admin_required
+def admin_bank_new():
+    form_data = dict(BANK_DEFAULTS)
+    if request.method == "POST":
+        form_data, errors = _bank_form_data()
+        if errors:
+            for error in errors:
+                flash(error, "error")
+        else:
+            try:
+                db.create_bank(form_data["name"], form_data["description"])
+            except sqlite3.IntegrityError:
+                flash("该题库名称已存在。", "error")
+            else:
+                flash(f"题库「{form_data['name']}」已创建。", "success")
+                return redirect(url_for("admin_banks"))
+    return render_template("admin/bank_form.html", bank=form_data, mode="new")
+
+
+@app.route("/admin/banks/<int:bid>/edit", methods=["GET", "POST"])
+@admin_required
+def admin_bank_edit(bid):
+    row = db.get_bank(bid)
+    if row is None:
+        abort(404)
+
+    form_data = dict(row)
+    if request.method == "POST":
+        form_data, errors = _bank_form_data()
+        form_data["id"] = bid
+        if errors:
+            for error in errors:
+                flash(error, "error")
+        else:
+            try:
+                db.update_bank(bid, form_data["name"], form_data["description"])
+            except sqlite3.IntegrityError:
+                flash("该题库名称已存在。", "error")
+            else:
+                flash("题库信息已保存。", "success")
+                return redirect(url_for("admin_banks"))
+
+    return render_template("admin/bank_form.html", bank=form_data, mode="edit")
+
+
+@app.route("/admin/banks/<int:bid>/delete", methods=["POST"])
+@admin_required
+def admin_bank_delete(bid):
+    row = db.get_bank(bid)
+    if row is None:
+        abort(404)
+
+    if row["problem_count"] > 0:
+        flash(
+            f"题库「{row['name']}」下仍有 {row['problem_count']} 道题目，"
+            "请先将题目移动到其他题库或删除。",
+            "error",
+        )
+    elif db.site_stats()["banks"] <= 1:
+        flash("至少需要保留一个题库。", "error")
+    else:
+        try:
+            db.delete_bank(bid)
+        except sqlite3.IntegrityError:
+            flash("该题库下仍有题目，无法删除。", "error")
+        else:
+            flash(f"题库「{row['name']}」已删除。", "success")
+    return redirect(url_for("admin_banks"))
 
 
 @app.route("/admin/problems")
 @admin_required
 def admin_problems():
-    problems = db.list_problems(include_hidden=True)
-    return render_template("admin/problems.html", problems=problems)
+    bank_id = request.args.get("bank", type=int)
+    selected_bank = db.get_bank(bank_id) if bank_id is not None else None
+    if bank_id is not None and selected_bank is None:
+        abort(404)
+    difficulty = request.args.get("difficulty", "").strip()
+    if difficulty not in DIFFICULTIES:
+        difficulty = ""
+    page = max(1, request.args.get("page", 1, type=int) or 1)
+    per_page = app.config["PER_PAGE"]
+
+    def fetch(target_page):
+        return db.query_problems(
+            include_hidden=True,
+            bank_id=bank_id,
+            difficulty=difficulty or None,
+            page=target_page,
+            per_page=per_page,
+        )
+
+    rows, total = fetch(page)
+    pages = max(1, math.ceil(total / per_page))
+    if page > pages:
+        page = pages
+        rows, total = fetch(page)
+    return render_template(
+        "admin/problems.html",
+        problems=rows,
+        banks=db.list_banks(),
+        selected_bank=selected_bank,
+        selected_difficulty=difficulty,
+        total=total,
+        page=page,
+        pages=pages,
+    )
 
 
 @app.route("/admin/problems/import", methods=["GET", "POST"])
 @admin_required
 def admin_problem_import():
-    raw_text = ""
-    if request.method == "POST":
-        upload = request.files.get("json_file")
-        if upload is not None and upload.filename:
-            data = upload.read(MAX_IMPORT_BYTES + 1)
-            if len(data) > MAX_IMPORT_BYTES:
-                flash("JSON 文件超过 8 MB 限制。", "error")
-                return render_template("admin/import.html", json_text="")
-            try:
-                raw_text = data.decode("utf-8-sig")
-            except UnicodeDecodeError:
-                flash("JSON 文件不是有效的 UTF-8 编码。", "error")
-                return render_template("admin/import.html", json_text="")
-        else:
-            raw_text = request.form.get("json_text", "")
+    banks = db.list_banks()
 
-        raw_text = raw_text.lstrip("﻿")
-        if not raw_text.strip():
-            flash("请上传 JSON 文件或粘贴 JSON 内容。", "error")
-            return render_template("admin/import.html", json_text=raw_text)
+    def render_import(raw_text="", selected_bank_id=None):
+        return render_template(
+            "admin/import.html",
+            json_text=raw_text,
+            banks=banks,
+            selected_bank_id=selected_bank_id,
+        )
 
-        if len(raw_text.encode("utf-8")) > MAX_IMPORT_BYTES:
-            flash("JSON 内容超过 8 MB 限制。", "error")
-            return render_template("admin/import.html", json_text=raw_text)
+    if request.method == "GET":
+        requested = request.args.get("bank", type=int)
+        requested_bank = db.get_bank(requested) if requested is not None else None
+        selected_bank_id = (
+            requested_bank["id"] if requested_bank else (banks[0]["id"] if banks else None)
+        )
+        return render_import("", selected_bank_id)
 
+    try:
+        target_bank_id = int(request.form.get("bank_id", ""))
+    except (TypeError, ValueError):
+        target_bank_id = None
+    target_bank = db.get_bank(target_bank_id) if target_bank_id is not None else None
+    if target_bank is None:
+        flash("请选择有效的目标题库。", "error")
+        return render_import("", None)
+
+    selected_bank_id = target_bank["id"]
+    upload = request.files.get("json_file")
+    if upload is not None and upload.filename:
+        data = upload.read(MAX_IMPORT_BYTES + 1)
+        if len(data) > MAX_IMPORT_BYTES:
+            flash("JSON 文件超过 8 MB 限制。", "error")
+            return render_import("", selected_bank_id)
         try:
-            payload = json.loads(raw_text)
-        except json.JSONDecodeError as exc:
-            flash(
-                f"JSON 解析失败：第 {exc.lineno} 行第 {exc.colno} 列，{exc.msg}。",
-                "error",
-            )
-            return render_template("admin/import.html", json_text=raw_text)
+            raw_text = data.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            flash("JSON 文件不是有效的 UTF-8 编码。", "error")
+            return render_import("", selected_bank_id)
+    else:
+        raw_text = request.form.get("json_text", "")
 
-        items, errors = _parse_problem_bank(payload)
-        if errors:
-            for message in errors[:10]:
-                flash(message, "error")
-            if len(errors) > 10:
-                flash(f"还有 {len(errors) - 10} 个错误未显示，请修正后重试。", "error")
-            return render_template("admin/import.html", json_text=raw_text)
+    raw_text = raw_text.lstrip("﻿")
+    if not raw_text.strip():
+        flash("请上传 JSON 文件或粘贴 JSON 内容。", "error")
+        return render_import(raw_text, selected_bank_id)
 
-        try:
-            count = db.import_problems(items)
-        except Exception as exc:
-            flash(f"导入失败：{exc}", "error")
-            return render_template("admin/import.html", json_text=raw_text)
+    if len(raw_text.encode("utf-8")) > MAX_IMPORT_BYTES:
+        flash("JSON 内容超过 8 MB 限制。", "error")
+        return render_import(raw_text, selected_bank_id)
 
-        total_cases = sum(len(item["test_cases"]) for item in items)
-        flash(f"成功导入 {count} 道题目、{total_cases} 个测试点。", "success")
-        return redirect(url_for("admin_problems"))
+    try:
+        payload = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        flash(
+            f"JSON 解析失败：第 {exc.lineno} 行第 {exc.colno} 列，{exc.msg}。",
+            "error",
+        )
+        return render_import(raw_text, selected_bank_id)
 
-    return render_template("admin/import.html", json_text=raw_text)
+    items, errors = _parse_problem_bank(payload)
+    if errors:
+        for message in errors[:10]:
+            flash(message, "error")
+        if len(errors) > 10:
+            flash(f"还有 {len(errors) - 10} 个错误未显示，请修正后重试。", "error")
+        return render_import(raw_text, selected_bank_id)
+
+    try:
+        count = db.import_problems(items, selected_bank_id)
+    except Exception as exc:
+        flash(f"导入失败：{exc}", "error")
+        return render_import(raw_text, selected_bank_id)
+
+    total_cases = sum(len(item["test_cases"]) for item in items)
+    flash(
+        f"成功将 {count} 道题目、{total_cases} 个测试点导入题库"
+        f"「{target_bank['name']}」。",
+        "success",
+    )
+    return redirect(url_for("admin_problems", bank=selected_bank_id))
 
 
 @app.route("/admin/problems/import/sample")
@@ -791,7 +1271,15 @@ def admin_problem_import_sample():
 @app.route("/admin/problems/new", methods=["GET", "POST"])
 @admin_required
 def admin_problem_new():
+    banks = db.list_banks()
     form_data = dict(PROBLEM_DEFAULTS)
+    if request.method == "GET":
+        requested = request.args.get("bank", type=int)
+        bank_ids = {bank["id"] for bank in banks}
+        if requested in bank_ids:
+            form_data["bank_id"] = requested
+        elif banks:
+            form_data["bank_id"] = banks[0]["id"]
     if request.method == "POST":
         form_data, errors = _problem_form_data()
         if errors:
@@ -801,7 +1289,9 @@ def admin_problem_new():
             problem_id = db.create_problem(form_data)
             flash("题目已创建，请继续添加测试点。", "success")
             return redirect(url_for("admin_testcases", pid=problem_id))
-    return render_template("admin/problem_form.html", problem=form_data, mode="new")
+    return render_template(
+        "admin/problem_form.html", problem=form_data, banks=banks, mode="new"
+    )
 
 
 @app.route("/admin/problems/<int:pid>/edit", methods=["GET", "POST"])
@@ -811,6 +1301,7 @@ def admin_problem_edit(pid):
     if row is None:
         abort(404)
 
+    banks = db.list_banks()
     form_data = dict(row)
     if request.method == "POST":
         form_data, errors = _problem_form_data()
@@ -821,9 +1312,11 @@ def admin_problem_edit(pid):
         else:
             db.update_problem(pid, form_data)
             flash("题目信息已保存。", "success")
-            return redirect(url_for("admin_problems"))
+            return redirect(url_for("admin_problems", bank=form_data["bank_id"]))
 
-    return render_template("admin/problem_form.html", problem=form_data, mode="edit")
+    return render_template(
+        "admin/problem_form.html", problem=form_data, banks=banks, mode="edit"
+    )
 
 
 @app.route("/admin/problems/<int:pid>/delete", methods=["POST"])
@@ -834,7 +1327,7 @@ def admin_problem_delete(pid):
         abort(404)
     db.delete_problem(pid)
     flash(f"题目 #{pid} 及其测试点、提交记录已删除。", "success")
-    return redirect(url_for("admin_problems"))
+    return redirect(url_for("admin_problems", bank=row["bank_id"]))
 
 
 @app.route("/admin/problems/<int:pid>/testcases", methods=["GET", "POST"])
@@ -938,8 +1431,10 @@ def admin_rejudge(sid):
             """,
             (sid,),
         )
-    judge.start_judge(sid)
-    flash(f"提交 #{sid} 已重新加入评测队列。", "success")
+    if judge.start_judge(sid):
+        flash(f"提交 #{sid} 已重新加入评测队列。", "success")
+    else:
+        flash("该提交已在评测队列中。", "error")
     return redirect(url_for("submission", sid=sid))
 
 

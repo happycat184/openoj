@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}题库管理 · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1>题库管理</h1>
+        <p class="page-sub">共 {{ banks|length }} 个题库。删除题库前需先清空其中的题目。</p>
+    </div>
+    <div class="head-actions">
+        <a class="button" href="{{ url_for('admin_bank_new') }}">新建题库</a>
+    </div>
+</div>
+
+{% include "admin/_nav.html" %}
+
+<div class="table-wrap">
+    <table class="data">
+        <thead>
+        <tr>
+            <th class="col-id">编号</th>
+            <th>题库</th>
+            <th>简介</th>
+            <th class="col-num">题目数</th>
+            <th class="col-num">可见</th>
+            <th class="col-time">创建时间</th>
+            <th class="col-actions">操作</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for bank in banks %}
+            <tr>
+                <td class="mono muted">#{{ bank['id'] }}</td>
+                <td><a class="problem-link" href="{{ url_for('bank', bid=bank['id']) }}">{{ bank['name'] }}</a></td>
+                <td class="bank-description">{{ bank['description'] if bank['description'] else '—' }}</td>
+                <td class="mono col-num">{{ bank['problem_count'] }}</td>
+                <td class="mono col-num">{{ bank['visible_count'] }}</td>
+                <td class="mono muted col-time">{{ bank['created_at'] }}</td>
+                <td class="col-actions">
+                    <div class="row-actions">
+                        <a href="{{ url_for('admin_problems', bank=bank['id']) }}">题目</a>
+                        <a href="{{ url_for('admin_bank_edit', bid=bank['id']) }}">编辑</a>
+                        <form method="post" action="{{ url_for('admin_bank_delete', bid=bank['id']) }}"
+                              data-confirm="确定删除题库「{{ bank['name'] }}」吗？题库中仍有题目时将无法删除。">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="text-button danger">删除</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="7" class="empty-cell">暂无题库。</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

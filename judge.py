@@ -6,6 +6,7 @@
 
 import ctypes
 import os
+import queue
 import shutil
 import subprocess
 import sys
@@ -26,6 +27,18 @@ SOURCE_NAMES = {
     "cpp": "main.cpp",
     "python": "main.py",
 }
+
+try:
+    WORKER_COUNT = max(1, min(8, int(os.environ.get("OPENOJ_JUDGE_WORKERS", "2"))))
+except ValueError:
+    WORKER_COUNT = 2
+
+_JUDGE_QUEUE = queue.Queue()
+_QUEUE_LOCK = threading.Lock()
+_QUEUED_IDS = set()
+_RUNNING_IDS = set()
+_WORKERS = []
+_WORKERS_LOCK = threading.Lock()
 
 _CHILD_ENV = os.environ.copy()
 _CHILD_ENV["PYTHONIOENCODING"] = "utf-8"
@@ -126,6 +139,18 @@ def _normalize_output(text):
 
 def _outputs_match(actual, expected):
     return _normalize_output(actual) == _normalize_output(expected)
+
+
+def _read_stderr_text(stderr_path, limit=20000):
+    try:
+        with open(stderr_path, "r", encoding="utf-8", errors="replace") as handle:
+            return handle.read(limit)
+    except OSError:
+        return ""
+
+
+def _has_python_traceback(stderr_path):
+    return "Traceback (most recent call last):" in _read_stderr_text(stderr_path)
 
 
 def _run_case(command, workdir, input_path, output_path, stderr_path,
@@ -310,6 +335,7 @@ def judge_submission(submission_id):
         overall = None
         max_time = 0.0
         max_memory = 0.0
+        runtime_note = ""
 
         for case in cases:
             case_no = case["case_no"]
@@ -334,7 +360,15 @@ def judge_submission(submission_id):
             elif killed == "TLE":
                 status = "TLE"
             elif returncode != 0:
-                status = "ULE"
+                if language == "python" and _has_python_traceback(stderr_path):
+                    status = "CE"
+                    if not runtime_note:
+                        stderr_text = _read_stderr_text(stderr_path, limit=8000)
+                        runtime_note = (
+                            f"测试点 #{case_no} 运行异常（Traceback）：\n{stderr_text}"
+                        )
+                else:
+                    status = "ULE"
             else:
                 try:
                     with open(output_path, "r", encoding="utf-8", errors="replace") as handle:
@@ -359,7 +393,7 @@ def judge_submission(submission_id):
             conn.commit()
 
         final_status = overall or "AC"
-        _finish(conn, submission_id, final_status, max_time, max_memory)
+        _finish(conn, submission_id, final_status, max_time, max_memory, runtime_note)
 
     except Exception as exc:  # 评测线程不能静默失败
         traceback.print_exc()
@@ -379,10 +413,54 @@ def judge_submission(submission_id):
                 pass
 
 
+def _worker_loop():
+    while True:
+        submission_id = _JUDGE_QUEUE.get()
+        try:
+            with _QUEUE_LOCK:
+                _QUEUED_IDS.discard(submission_id)
+                _RUNNING_IDS.add(submission_id)
+            judge_submission(submission_id)
+        except Exception:
+            traceback.print_exc()
+        finally:
+            with _QUEUE_LOCK:
+                _RUNNING_IDS.discard(submission_id)
+            _JUDGE_QUEUE.task_done()
+
+
+def _ensure_workers():
+    with _WORKERS_LOCK:
+        if _WORKERS:
+            return
+        for index in range(WORKER_COUNT):
+            worker = threading.Thread(
+                target=_worker_loop,
+                daemon=True,
+                name=f"judge-worker-{index + 1}",
+            )
+            worker.start()
+            _WORKERS.append(worker)
+
+
 def start_judge(submission_id):
-    thread = threading.Thread(
-        target=judge_submission, args=(submission_id,), daemon=True,
-        name=f"judge-{submission_id}",
-    )
-    thread.start()
-    return thread
+    """Enqueue a submission. Returns False if it is already queued/running."""
+    _ensure_workers()
+    with _QUEUE_LOCK:
+        if submission_id in _QUEUED_IDS or submission_id in _RUNNING_IDS:
+            return False
+        _QUEUED_IDS.add(submission_id)
+    _JUDGE_QUEUE.put(submission_id)
+    return True
+
+
+def queue_stats():
+    with _QUEUE_LOCK:
+        queued = len(_QUEUED_IDS)
+        running = len(_RUNNING_IDS)
+    return {
+        "workers": WORKER_COUNT,
+        "queued": queued,
+        "running": running,
+        "pending": _JUDGE_QUEUE.qsize(),
+    }

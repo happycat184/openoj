@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}题解/讨论 · {{ problem['title'] }} · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="{{ url_for('index') }}">题库</a>
+    <span class="breadcrumb-sep">/</span>
+    {% if problem['bank_id'] %}
+        <a href="{{ url_for('bank', bid=problem['bank_id']) }}">{{ problem['bank_name'] }}</a>
+        <span class="breadcrumb-sep">/</span>
+    {% endif %}
+    <a href="{{ url_for('problem', pid=problem['id']) }}">#{{ problem['id'] }}</a>
+    <span class="breadcrumb-sep">/</span>
+    <span>题解/讨论</span>
+</div>
+
+<div class="page-head">
+    <div>
+        <h1>题解 / 讨论</h1>
+        <p class="page-sub">
+            <a href="{{ url_for('problem', pid=problem['id']) }}">#{{ problem['id'] }} {{ problem['title'] }}</a>
+            · 共 {{ total }} 篇
+        </p>
+    </div>
+    <div class="head-actions">
+        {% if g.user %}
+            <a class="button" href="{{ url_for('discussion_new', pid=problem['id']) }}">发布主题</a>
+        {% else %}
+            <a class="button" href="{{ url_for('login', next=url_for('discussion_new', pid=problem['id'])) }}">登录后发布</a>
+        {% endif %}
+        <a class="button button-secondary" href="{{ url_for('problem', pid=problem['id']) }}">返回题目</a>
+    </div>
+</div>
+
+<div class="table-wrap">
+    <table class="data">
+        <thead>
+        <tr>
+            <th class="col-type">类型</th>
+            <th>标题</th>
+            <th>作者</th>
+            <th class="col-num">回复</th>
+            <th class="col-time">最后更新</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for item in discussions %}
+            <tr>
+                <td><span class="topic-kind topic-{{ item['kind'] }}">{{ discussion_kinds.get(item['kind'], item['kind']) }}</span></td>
+                <td>
+                    <a class="problem-link" href="{{ url_for('discussion_detail', did=item['id']) }}">{{ item['title'] }}</a>
+                </td>
+                <td><a href="{{ url_for('user_profile', username=item['username']) }}">{{ item['username'] }}</a></td>
+                <td class="mono col-num">{{ item['reply_count'] }}</td>
+                <td class="mono muted col-time">{{ item['updated_at'] }}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="5" class="empty-cell">还没有题解或讨论，来发布第一篇吧。</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+        <a href="{{ url_for('discussions', pid=problem['id'], page=page - 1) }}">上一页</a>
+    {% else %}
+        <span class="disabled">上一页</span>
+    {% endif %}
+    <span class="page-indicator">第 {{ page }} / {{ pages }} 页</span>
+    {% if page < pages %}
+        <a href="{{ url_for('discussions', pid=problem['id'], page=page + 1) }}">下一页</a>
+    {% else %}
+        <span class="disabled">下一页</span>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

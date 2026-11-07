@@ -1,0 +1,53 @@
+{% set column_count = 7 if show_bank else 6 %}
+<div class="table-wrap">
+    <table class="data problem-table{{ ' with-bank' if show_bank else '' }}">
+        <thead>
+        <tr>
+            <th class="col-id">编号</th>
+            <th>题目</th>
+            {% if show_bank %}<th>题库</th>{% endif %}
+            <th class="col-num">通过率</th>
+            <th class="col-num">时间限制</th>
+            <th class="col-num">内存限制</th>
+            <th class="col-state">我的状态</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for p in problems %}
+            <tr>
+                <td class="mono muted">#{{ p.id }}</td>
+                <td>
+                    {% set diff = p['difficulty'] if p['difficulty'] in difficulties else '简单' %}
+                    <span class="difficulty difficulty-{{ difficulties[diff]['slug'] }}">{{ diff }}</span>
+                    <a class="problem-link" href="{{ url_for('problem', pid=p.id) }}">{{ p.title }}</a>
+                </td>
+                {% if show_bank %}
+                    <td class="bank-cell">
+                        {% if p.bank_name %}
+                            <a class="muted-link" href="{{ url_for('bank', bid=p.bank_id) }}">{{ p.bank_name }}</a>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                {% endif %}
+                <td class="mono col-num">{{ '%.1f%%'|format(p.ac_rate) if p.ac_rate is not none else '—' }}</td>
+                <td class="mono col-num">{{ p.time_limit_ms }} ms</td>
+                <td class="mono col-num">{{ p.memory_limit_kb }} KB</td>
+                <td>
+                    {% if p.user_status == 'solved' %}
+                        <span class="user-state state-solved">已通过</span>
+                    {% elif p.user_status == 'attempted' %}
+                        <span class="user-state state-attempted">尝试过</span>
+                    {% else %}
+                        <span class="muted">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+        {% else %}
+            <tr>
+                <td colspan="{{ column_count }}" class="empty-cell">{{ empty_message|default('该题库暂无可见题目。') }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{{ discussion['title'] }} · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="{{ url_for('index') }}">题库</a>
+    <span class="breadcrumb-sep">/</span>
+    <a href="{{ url_for('problem', pid=problem['id']) }}">#{{ problem['id'] }} {{ problem['title'] }}</a>
+    <span class="breadcrumb-sep">/</span>
+    <a href="{{ url_for('discussions', pid=problem['id']) }}">题解/讨论</a>
+    <span class="breadcrumb-sep">/</span>
+    <span>{{ discussion['title'] }}</span>
+</div>
+
+<div class="page-head">
+    <div>
+        <h1>{{ discussion['title'] }}</h1>
+        <p class="page-sub">
+            <span class="topic-kind topic-{{ discussion['kind'] }}">{{ discussion_kinds.get(discussion['kind'], discussion['kind']) }}</span>
+            <a href="{{ url_for('user_profile', username=discussion['username']) }}">{{ discussion['username'] }}</a>
+            · {{ discussion['created_at'] }}
+        </p>
+    </div>
+    <div class="head-actions">
+        <a class="button button-secondary" href="{{ url_for('discussions', pid=problem['id']) }}">返回讨论区</a>
+        {% if can_manage %}
+            <form method="post" action="{{ url_for('discussion_delete', did=discussion['id']) }}"
+                  data-confirm="确定删除这个主题及其全部回复吗？">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="button button-secondary" type="submit">删除主题</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+<article class="section discussion-topic">
+    <div class="section-head">
+        <h2>正文</h2>
+    </div>
+    <div class="md">{{ discussion['content']|markdown }}</div>
+</article>
+
+<section class="section">
+    <div class="section-head">
+        <h2>回复</h2>
+        <span class="section-meta">{{ replies|length }} 条</span>
+    </div>
+
+    {% for reply in replies %}
+        <div class="discussion-reply" id="reply-{{ reply['id'] }}">
+            <div class="reply-head">
+                <a href="{{ url_for('user_profile', username=reply['username']) }}">{{ reply['username'] }}</a>
+                <span class="muted mono">{{ reply['created_at'] }}</span>
+                {% if g.user and (g.user['id'] == reply['user_id'] or g.user['role'] == 'admin') %}
+                    <form method="post" action="{{ url_for('discussion_reply_delete', rid=reply['id']) }}"
+                          data-confirm="确定删除这条回复吗？" class="inline-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="text-button danger">删除</button>
+                    </form>
+                {% endif %}
+            </div>
+            <div class="md">{{ reply['content']|markdown }}</div>
+        </div>
+    {% else %}
+        <div class="pending-note">还没有回复。</div>
+    {% endfor %}
+
+    {% if g.user %}
+        <form method="post" action="{{ url_for('discussion_reply', did=discussion['id']) }}" class="reply-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-field">
+                <label for="reply-content">发表回复</label>
+                <textarea id="reply-content" name="content" rows="6" required
+                          placeholder="支持 Markdown 与 LaTeX。"></textarea>
+            </div>
+            <div class="form-actions">
+                <button class="button" type="submit">回复</button>
+                <span class="form-hint">发布后立即公开显示。</span>
+            </div>
+        </form>
+    {% else %}
+        <div class="pending-note">
+            <a href="{{ url_for('login', next=url_for('discussion_detail', did=discussion['id'])) }}">登录</a>
+            后可以参与回复。
+        </div>
+    {% endif %}
+</section>
+{% endblock %}

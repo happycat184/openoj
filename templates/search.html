@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}搜索 {{ query }} · OpenOJ{% endblock %}
+
+{% block content %}
+<div class="breadcrumb">
+    <a href="{{ url_for('index') }}">题库</a>
+    <span class="breadcrumb-sep">/</span>
+    <span>搜索</span>
+</div>
+
+<div class="page-head">
+    <div>
+        <h1>搜索结果</h1>
+        <p class="page-sub">关键词「{{ query }}」 · 共 {{ total }} 个结果</p>
+    </div>
+</div>
+
+<form method="get" action="{{ url_for('search') }}" class="search-form" role="search">
+    <div class="search-bar">
+        <input class="search-input" type="search" name="q" maxlength="100"
+               value="{{ query }}" placeholder="搜索题目标题、描述或题库……" aria-label="搜索题目">
+        <button class="button" type="submit">搜索</button>
+    </div>
+    <div class="filter-bar">
+        <label for="search-difficulty">难度</label>
+        <select id="search-difficulty" name="difficulty">
+            <option value="">全部难度</option>
+            {% for name in difficulty_names %}
+                <option value="{{ name }}" {{ 'selected' if selected_difficulty == name else '' }}>{{ name }}</option>
+            {% endfor %}
+        </select>
+        <label for="search-bank">题库</label>
+        <select id="search-bank" name="bank">
+            <option value="">全部题库</option>
+            {% for item in banks %}
+                <option value="{{ item['id'] }}" {{ 'selected' if selected_bank and selected_bank['id'] == item['id'] else '' }}>{{ item['name'] }}</option>
+            {% endfor %}
+        </select>
+        <button class="button button-secondary button-small" type="submit">应用筛选</button>
+        {% if selected_difficulty or selected_bank %}
+            <a class="text-link" href="{{ url_for('search', q=query) }}">清除筛选</a>
+        {% endif %}
+    </div>
+</form>
+
+{% with show_bank = true, empty_message = '没有找到匹配的题目。' %}
+    {% include "_problem_table.html" %}
+{% endwith %}
+
+{% if pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+        <a href="{{ url_for('search', q=query, page=page - 1, difficulty=selected_difficulty or none, bank=selected_bank['id'] if selected_bank else none) }}">上一页</a>
+    {% else %}
+        <span class="disabled">上一页</span>
+    {% endif %}
+    <span class="page-indicator">第 {{ page }} / {{ pages }} 页</span>
+    {% if page < pages %}
+        <a href="{{ url_for('search', q=query, page=page + 1, difficulty=selected_difficulty or none, bank=selected_bank['id'] if selected_bank else none) }}">下一页</a>
+    {% else %}
+        <span class="disabled">下一页</span>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

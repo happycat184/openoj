@@ -5,12 +5,20 @@
 <div class="breadcrumb">
     <a href="{{ url_for('index') }}">题库</a>
     <span class="breadcrumb-sep">/</span>
+    {% if problem['bank_id'] %}
+        <a href="{{ url_for('bank', bid=problem['bank_id']) }}">{{ problem['bank_name'] }}</a>
+        <span class="breadcrumb-sep">/</span>
+    {% endif %}
     <span>#{{ problem['id'] }}</span>
 </div>
 
 <div class="page-head">
     <div>
-        <h1><span class="problem-id">#{{ problem['id'] }}</span> {{ problem['title'] }}</h1>
+        <h1>
+            <span class="problem-id">#{{ problem['id'] }}</span> {{ problem['title'] }}
+            {% set diff = problem['difficulty'] if problem['difficulty'] in difficulties else '简单' %}
+            <span class="difficulty difficulty-{{ difficulties[diff]['slug'] }}">{{ diff }}</span>
+        </h1>
         <p class="page-sub meta-inline">
             <span>时间限制 <strong class="mono">{{ problem['time_limit_ms'] }} ms</strong></span>
             <span>内存限制 <strong class="mono">{{ problem['memory_limit_kb'] }} KB</strong></span>
@@ -23,6 +31,7 @@
            href="{{ url_for('problem_ide', pid=problem['id']) if g.user else url_for('login', next=url_for('problem_ide', pid=problem['id'])) }}">
             {{ '开始编写' if g.user else '登录后编写' }}
         </a>
+        <a class="button button-secondary" href="{{ url_for('discussions', pid=problem['id']) }}">题解/讨论{% if discussion_count %}（{{ discussion_count }}）{% endif %}</a>
         <a class="button button-secondary" href="{{ url_for('submissions', problem=problem['id']) }}">本题提交</a>
     </div>
 </div>

@@ -48,9 +48,18 @@ CREATE TABLE IF NOT EXISTS users (
     created_at    TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS banks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    description TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS problems (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    bank_id         INTEGER REFERENCES banks(id) ON DELETE RESTRICT,
     title           TEXT NOT NULL,
+    difficulty      TEXT NOT NULL DEFAULT '简单',
     description     TEXT NOT NULL DEFAULT '',
     input_format    TEXT NOT NULL DEFAULT '',
     output_format   TEXT NOT NULL DEFAULT '',
@@ -99,11 +108,33 @@ CREATE TABLE IF NOT EXISTS submission_cases (
     memory_kb     REAL NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_submission_cases_sub ON submission_cases(submission_id, case_no);
+
+CREATE TABLE IF NOT EXISTS discussions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    problem_id INTEGER NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL DEFAULT 'discussion',
+    title      TEXT NOT NULL,
+    content    TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_discussions_problem ON discussions(problem_id, updated_at);
+
+CREATE TABLE IF NOT EXISTS discussion_replies (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    discussion_id INTEGER NOT NULL REFERENCES discussions(id) ON DELETE CASCADE,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    content       TEXT NOT NULL,
+    created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_discussion_replies_discussion ON discussion_replies(discussion_id, id);
 """
 
 SEED_PROBLEMS = [
     {
         "title": "A+B Problem",
+        "difficulty": "入门",
         "description": (
             "输入两个整数 a 和 b，输出它们的和。\n\n"
             "这是一道用于熟悉 OpenOJ 提交方式的入门题，支持 C、C++ 与 Python。"
@@ -124,6 +155,7 @@ SEED_PROBLEMS = [
     },
     {
         "title": "斐波那契数列",
+        "difficulty": "简单",
         "description": (
             "斐波那契数列定义如下：F(1) = 1，F(2) = 1，"
             "当 n ≥ 3 时，F(n) = F(n-1) + F(n-2)。\n\n"
@@ -146,6 +178,7 @@ SEED_PROBLEMS = [
     },
     {
         "title": "回文串判断",
+        "difficulty": "简单",
         "description": (
             "给定一个由大小写字母和数字组成的字符串（不含空格），判断它是否为回文串。\n\n"
             "回文串是指正读和反读都相同的字符串，例如 level、12321。"
@@ -168,6 +201,7 @@ SEED_PROBLEMS = [
     },
     {
         "title": "最大子段和",
+        "difficulty": "中等",
         "description": (
             "给定一个由 n 个整数组成的序列，求其连续子段的最大和。\n\n"
             "子段不能为空，且必须由序列中连续的一段元素组成。"
@@ -193,10 +227,42 @@ SEED_PROBLEMS = [
 
 
 def init_db():
-    """建表、写入默认管理员与示例题目。可重复调用。"""
+    """建表、执行题库迁移、写入默认管理员与示例题目。可重复调用。"""
     with get_conn() as conn:
         conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(SCHEMA)
+
+        # 旧版本数据库升级：补充 problems.bank_id
+        columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(problems)").fetchall()
+        }
+        if "bank_id" not in columns:
+            conn.execute(
+                "ALTER TABLE problems ADD COLUMN bank_id INTEGER "
+                "REFERENCES banks(id) ON DELETE RESTRICT"
+            )
+        if "difficulty" not in columns:
+            conn.execute(
+                "ALTER TABLE problems ADD COLUMN difficulty TEXT NOT NULL DEFAULT '简单'"
+            )
+        conn.execute("UPDATE problems SET difficulty = '简单' WHERE difficulty IS NULL OR difficulty = ''")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_problems_bank ON problems(bank_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_problems_difficulty ON problems(difficulty)")
+
+        default_bank = conn.execute(
+            "SELECT id FROM banks ORDER BY id ASC LIMIT 1"
+        ).fetchone()
+        if default_bank is None:
+            cur = conn.execute(
+                "INSERT INTO banks (name, description, created_at) VALUES (?, ?, ?)",
+                ("默认题库", "系统默认题库", now_str()),
+            )
+            default_bank_id = cur.lastrowid
+        else:
+            default_bank_id = default_bank["id"]
+        conn.execute(
+            "UPDATE problems SET bank_id = ? WHERE bank_id IS NULL", (default_bank_id,)
+        )
 
         admin = conn.execute(
             "SELECT id FROM users WHERE username = ?", (DEFAULT_ADMIN_USERNAME,)
@@ -214,13 +280,15 @@ def init_db():
                 cur = conn.execute(
                     """
                     INSERT INTO problems
-                        (title, description, input_format, output_format, sample_input,
-                         sample_output, hint, time_limit_ms, memory_limit_kb, is_visible,
-                         created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                        (bank_id, title, difficulty, description, input_format, output_format,
+                         sample_input, sample_output, hint, time_limit_ms,
+                         memory_limit_kb, is_visible, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                     """,
                     (
+                        default_bank_id,
                         item["title"],
+                        item.get("difficulty", "简单"),
                         item["description"],
                         item["input_format"],
                         item["output_format"],
@@ -297,27 +365,230 @@ def list_users_with_stats():
         ).fetchall()
 
 
+# ---------------------------------------------------------------- banks
+
+def list_banks():
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT b.*,
+                   (SELECT COUNT(*) FROM problems p WHERE p.bank_id = b.id) AS problem_count,
+                   (SELECT COUNT(*) FROM problems p
+                     WHERE p.bank_id = b.id AND p.is_visible = 1) AS visible_count
+            FROM banks b
+            ORDER BY b.id ASC
+            """
+        ).fetchall()
+
+
+def get_bank(bid):
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT b.*,
+                   (SELECT COUNT(*) FROM problems p WHERE p.bank_id = b.id) AS problem_count,
+                   (SELECT COUNT(*) FROM problems p
+                     WHERE p.bank_id = b.id AND p.is_visible = 1) AS visible_count
+            FROM banks b
+            WHERE b.id = ?
+            """,
+            (bid,),
+        ).fetchone()
+
+
+def get_bank_by_name(name):
+    with get_conn() as conn:
+        return conn.execute("SELECT * FROM banks WHERE name = ?", (name,)).fetchone()
+
+
+def create_bank(name, description=""):
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO banks (name, description, created_at) VALUES (?, ?, ?)",
+            (name, description, now_str()),
+        )
+        return cur.lastrowid
+
+
+def update_bank(bid, name, description):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE banks SET name = ?, description = ? WHERE id = ?",
+            (name, description, bid),
+        )
+
+
+def delete_bank(bid):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM banks WHERE id = ?", (bid,))
+
+
+def user_bank_progress(user_id):
+    with get_conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT p.bank_id,
+                   COUNT(DISTINCT p.id) AS attempted,
+                   COUNT(DISTINCT CASE WHEN s.status = 'AC' THEN p.id END) AS solved
+            FROM submissions s
+            JOIN problems p ON p.id = s.problem_id
+            WHERE s.user_id = ?
+            GROUP BY p.bank_id
+            """,
+            (user_id,),
+        ).fetchall()
+    return {
+        row["bank_id"]: {"attempted": row["attempted"], "solved": row["solved"]}
+        for row in rows
+    }
+
+
 # ---------------------------------------------------------------- problems
 
 def get_problem(pid):
     with get_conn() as conn:
-        return conn.execute("SELECT * FROM problems WHERE id = ?", (pid,)).fetchone()
-
-
-def list_problems(include_hidden=False):
-    where = "" if include_hidden else "WHERE p.is_visible = 1"
-    with get_conn() as conn:
         return conn.execute(
+            """
+            SELECT p.*, b.name AS bank_name
+            FROM problems p
+            LEFT JOIN banks b ON b.id = p.bank_id
+            WHERE p.id = ?
+            """,
+            (pid,),
+        ).fetchone()
+
+
+def query_problems(include_hidden=False, bank_id=None, difficulty=None,
+                   status=None, user_id=None, page=1, per_page=20):
+    conditions = []
+    params = []
+    if not include_hidden:
+        conditions.append("p.is_visible = 1")
+    if bank_id is not None:
+        conditions.append("p.bank_id = ?")
+        params.append(bank_id)
+    if difficulty:
+        conditions.append("p.difficulty = ?")
+        params.append(difficulty)
+    if status and user_id is not None:
+        if status == "solved":
+            conditions.append(
+                "EXISTS (SELECT 1 FROM submissions s WHERE s.problem_id = p.id "
+                "AND s.user_id = ? AND s.status = 'AC')"
+            )
+            params.append(user_id)
+        elif status == "attempted":
+            conditions.append(
+                "EXISTS (SELECT 1 FROM submissions s WHERE s.problem_id = p.id "
+                "AND s.user_id = ?)"
+            )
+            params.append(user_id)
+        elif status == "unsolved":
+            conditions.append(
+                "NOT EXISTS (SELECT 1 FROM submissions s WHERE s.problem_id = p.id "
+                "AND s.user_id = ? AND s.status = 'AC')"
+            )
+            params.append(user_id)
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+    limit_sql = ""
+    limit_params = []
+    if per_page:
+        per_page = max(1, int(per_page))
+        page = max(1, int(page))
+        limit_sql = "LIMIT ? OFFSET ?"
+        limit_params = [per_page, (page - 1) * per_page]
+
+    with get_conn() as conn:
+        total = conn.execute(
             f"""
-            SELECT p.*,
+            SELECT COUNT(*) AS c
+            FROM problems p
+            LEFT JOIN banks b ON b.id = p.bank_id
+            {where}
+            """,
+            params,
+        ).fetchone()["c"]
+        rows = conn.execute(
+            f"""
+            SELECT p.*, b.name AS bank_name,
                    (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id) AS submission_count,
                    (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id AND s.status = 'AC') AS ac_count,
                    (SELECT COUNT(*) FROM test_cases t WHERE t.problem_id = p.id) AS case_count
             FROM problems p
+            LEFT JOIN banks b ON b.id = p.bank_id
             {where}
             ORDER BY p.id ASC
-            """
+            {limit_sql}
+            """,
+            params + limit_params,
         ).fetchall()
+    return rows, total
+
+
+def list_problems(include_hidden=False, bank_id=None):
+    rows, _ = query_problems(
+        include_hidden=include_hidden, bank_id=bank_id, page=1, per_page=None
+    )
+    return rows
+
+
+def random_problems(limit=10):
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT p.*, b.name AS bank_name,
+                   (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id) AS submission_count,
+                   (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id AND s.status = 'AC') AS ac_count,
+                   (SELECT COUNT(*) FROM test_cases t WHERE t.problem_id = p.id) AS case_count
+            FROM problems p
+            LEFT JOIN banks b ON b.id = p.bank_id
+            WHERE p.is_visible = 1
+            ORDER BY RANDOM()
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+
+def search_problems(query, page=1, per_page=20, difficulty=None, bank_id=None):
+    like = f"%{query}%"
+    conditions = [
+        "p.is_visible = 1",
+        "(p.title LIKE ? OR p.description LIKE ? OR b.name LIKE ?)",
+    ]
+    params = [like, like, like]
+    if difficulty:
+        conditions.append("p.difficulty = ?")
+        params.append(difficulty)
+    if bank_id is not None:
+        conditions.append("p.bank_id = ?")
+        params.append(bank_id)
+    where = "WHERE " + " AND ".join(conditions)
+    with get_conn() as conn:
+        total = conn.execute(
+            f"""
+            SELECT COUNT(*) AS c
+            FROM problems p
+            LEFT JOIN banks b ON b.id = p.bank_id
+            {where}
+            """,
+            params,
+        ).fetchone()["c"]
+        rows = conn.execute(
+            f"""
+            SELECT p.*, b.name AS bank_name,
+                   (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id) AS submission_count,
+                   (SELECT COUNT(*) FROM submissions s WHERE s.problem_id = p.id AND s.status = 'AC') AS ac_count,
+                   (SELECT COUNT(*) FROM test_cases t WHERE t.problem_id = p.id) AS case_count
+            FROM problems p
+            LEFT JOIN banks b ON b.id = p.bank_id
+            {where}
+            ORDER BY p.id ASC
+            LIMIT ? OFFSET ?
+            """,
+            params + [per_page, (page - 1) * per_page],
+        ).fetchall()
+    return rows, total
 
 
 def problem_stats(pid):
@@ -340,13 +611,15 @@ def create_problem(data):
         cur = conn.execute(
             """
             INSERT INTO problems
-                (title, description, input_format, output_format, sample_input,
-                 sample_output, hint, time_limit_ms, memory_limit_kb, is_visible,
-                 created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (bank_id, title, difficulty, description, input_format, output_format,
+                 sample_input, sample_output, hint, time_limit_ms, memory_limit_kb,
+                 is_visible, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                data["bank_id"],
                 data["title"],
+                data.get("difficulty", "简单"),
                 data["description"],
                 data["input_format"],
                 data["output_format"],
@@ -363,7 +636,7 @@ def create_problem(data):
         return cur.lastrowid
 
 
-def import_problems(items):
+def import_problems(items, bank_id):
     """在一个事务中导入题目及其测试点，失败时全部回滚。"""
     stamp = now_str()
     with get_conn() as conn:
@@ -371,13 +644,15 @@ def import_problems(items):
             cur = conn.execute(
                 """
                 INSERT INTO problems
-                    (title, description, input_format, output_format, sample_input,
-                     sample_output, hint, time_limit_ms, memory_limit_kb, is_visible,
-                     created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (bank_id, title, difficulty, description, input_format, output_format,
+                     sample_input, sample_output, hint, time_limit_ms, memory_limit_kb,
+                     is_visible, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    bank_id,
                     item["title"],
+                    item.get("difficulty", "简单"),
                     item["description"],
                     item["input_format"],
                     item["output_format"],
@@ -408,13 +683,16 @@ def update_problem(pid, data):
         conn.execute(
             """
             UPDATE problems SET
-                title = ?, description = ?, input_format = ?, output_format = ?,
-                sample_input = ?, sample_output = ?, hint = ?,
-                time_limit_ms = ?, memory_limit_kb = ?, is_visible = ?, updated_at = ?
+                bank_id = ?, title = ?, difficulty = ?, description = ?,
+                input_format = ?, output_format = ?, sample_input = ?, sample_output = ?,
+                hint = ?, time_limit_ms = ?, memory_limit_kb = ?, is_visible = ?,
+                updated_at = ?
             WHERE id = ?
             """,
             (
+                data["bank_id"],
                 data["title"],
+                data.get("difficulty", "简单"),
                 data["description"],
                 data["input_format"],
                 data["output_format"],
@@ -451,6 +729,116 @@ def replace_test_cases(pid, rows):
                 "INSERT INTO test_cases (problem_id, case_no, input_data, output_data) VALUES (?, ?, ?, ?)",
                 (pid, index, input_data, output_data),
             )
+
+
+# ---------------------------------------------------------------- discussions
+
+def create_discussion(problem_id, user_id, kind, title, content):
+    stamp = now_str()
+    with get_conn() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO discussions
+                (problem_id, user_id, kind, title, content, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (problem_id, user_id, kind, title, content, stamp, stamp),
+        )
+        return cur.lastrowid
+
+
+def get_discussion(did):
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT d.*, u.username, p.title AS problem_title, p.bank_id,
+                   b.name AS bank_name
+            FROM discussions d
+            JOIN users u ON u.id = d.user_id
+            JOIN problems p ON p.id = d.problem_id
+            LEFT JOIN banks b ON b.id = p.bank_id
+            WHERE d.id = ?
+            """,
+            (did,),
+        ).fetchone()
+
+
+def list_discussions(problem_id, page=1, per_page=20):
+    page = max(1, int(page))
+    per_page = max(1, int(per_page))
+    with get_conn() as conn:
+        total = conn.execute(
+            "SELECT COUNT(*) AS c FROM discussions WHERE problem_id = ?",
+            (problem_id,),
+        ).fetchone()["c"]
+        rows = conn.execute(
+            """
+            SELECT d.*, u.username,
+                   (SELECT COUNT(*) FROM discussion_replies r
+                     WHERE r.discussion_id = d.id) AS reply_count
+            FROM discussions d
+            JOIN users u ON u.id = d.user_id
+            WHERE d.problem_id = ?
+            ORDER BY d.updated_at DESC, d.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (problem_id, per_page, (page - 1) * per_page),
+        ).fetchall()
+    return rows, total
+
+
+def discussion_count(problem_id):
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) AS c FROM discussions WHERE problem_id = ?",
+            (problem_id,),
+        ).fetchone()["c"]
+
+
+def list_replies(discussion_id):
+    with get_conn() as conn:
+        return conn.execute(
+            """
+            SELECT r.*, u.username
+            FROM discussion_replies r
+            JOIN users u ON u.id = r.user_id
+            WHERE r.discussion_id = ?
+            ORDER BY r.id ASC
+            """,
+            (discussion_id,),
+        ).fetchall()
+
+
+def create_reply(discussion_id, user_id, content):
+    stamp = now_str()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO discussion_replies (discussion_id, user_id, content, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (discussion_id, user_id, content, stamp),
+        )
+        conn.execute(
+            "UPDATE discussions SET updated_at = ? WHERE id = ?",
+            (stamp, discussion_id),
+        )
+        return cur.lastrowid
+
+
+def get_reply(reply_id):
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT * FROM discussion_replies WHERE id = ?", (reply_id,)
+        ).fetchone()
+
+
+def delete_reply(reply_id):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM discussion_replies WHERE id = ?", (reply_id,))
+
+
+def delete_discussion(discussion_id):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM discussions WHERE id = ?", (discussion_id,))
 
 
 # ---------------------------------------------------------------- submissions
@@ -594,11 +982,13 @@ def site_stats():
         ).fetchone()["c"]
         submissions = conn.execute("SELECT COUNT(*) AS c FROM submissions").fetchone()["c"]
         all_problems = conn.execute("SELECT COUNT(*) AS c FROM problems").fetchone()["c"]
+        banks = conn.execute("SELECT COUNT(*) AS c FROM banks").fetchone()["c"]
     return {
         "users": users,
         "problems": problems,
         "all_problems": all_problems,
         "submissions": submissions,
+        "banks": banks,
     }
 
 

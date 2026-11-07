@@ -1,6 +1,8 @@
 {% set ep = request.endpoint or '' %}
 <nav class="subnav" aria-label="管理导航">
     <a href="{{ url_for('admin_dashboard') }}" class="{{ 'active' if ep == 'admin_dashboard' else '' }}">控制台</a>
+    <a href="{{ url_for('admin_banks') }}"
+       class="{{ 'active' if ep in ['admin_banks', 'admin_bank_new', 'admin_bank_edit'] else '' }}">题库管理</a>
     <a href="{{ url_for('admin_problems') }}"
        class="{{ 'active' if ep in ['admin_problems', 'admin_problem_new', 'admin_problem_edit', 'admin_problem_import', 'admin_testcases'] else '' }}">题目管理</a>
     <a href="{{ url_for('admin_users') }}" class="{{ 'active' if ep == 'admin_users' else '' }}">用户管理</a>

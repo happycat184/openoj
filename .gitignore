@@ -6,3 +6,9 @@ openoj.db-wal
 work/
 .venv/
 venv/
+
+backups/
+
+example/
+
+test/

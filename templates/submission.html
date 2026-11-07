@@ -81,7 +81,7 @@
 {% if submission['compile_output'] %}
 <section class="section">
     <div class="section-head">
-        <h2>{{ '编译输出' if submission['status'] == 'CE' else '附加信息' }}</h2>
+        <h2>{{ '编译 / 运行信息' if submission['status'] == 'CE' else '附加信息' }}</h2>
     </div>
     <pre class="output-box">{{ submission['compile_output'] }}</pre>
 </section>

@@ -5,7 +5,7 @@
 <div class="page-head">
     <div>
         <h1>{{ '新建题目' if mode == 'new' else '编辑题目 #' ~ problem['id'] }}</h1>
-        <p class="page-sub">题面支持多行纯文本，换行会原样保留。</p>
+        <p class="page-sub">题目需归属一个题库；题面支持 Markdown 与 LaTeX。</p>
     </div>
 </div>
 
@@ -19,6 +19,27 @@
     <section class="section">
         <div class="section-head">
             <h2>基本信息</h2>
+        </div>
+
+        <div class="form-field">
+            <label for="bank_id">所属题库</label>
+            <select id="bank_id" name="bank_id" required>
+                {% if not problem['bank_id'] %}
+                    <option value="">请选择题库</option>
+                {% endif %}
+                {% for b in banks %}
+                    <option value="{{ b['id'] }}" {{ 'selected' if problem['bank_id'] == b['id'] else '' }}>{{ b['name'] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-field">
+            <label for="difficulty">难度</label>
+            <select id="difficulty" name="difficulty">
+                {% for name in difficulty_names %}
+                    <option value="{{ name }}" {{ 'selected' if problem['difficulty'] == name else '' }}>{{ name }}</option>
+                {% endfor %}
+            </select>
         </div>
 
         <div class="form-field">
@@ -57,6 +78,7 @@
             <label for="description">题目描述</label>
             <textarea id="description" name="description" rows="9"
                       placeholder="描述题目背景、任务与要求……">{{ problem['description'] }}</textarea>
+            <p class="form-hint">支持 Markdown 与 LaTeX，例如 **加粗**、`代码`、$O(n\log n)$。</p>
         </div>
 
         <div class="form-row">

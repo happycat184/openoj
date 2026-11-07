@@ -3,6 +3,11 @@
 {% block content_class %}ide-content{% endblock %}
 {% block footer %}{% endblock %}
 
+{% block head_extra %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/codemirror/lib/codemirror.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/codemirror/addon/hint/show-hint.css') }}">
+{% endblock %}
+
 {% block content %}
 <div class="ide-workspace">
     <section class="ide-problem-pane">
@@ -10,11 +15,19 @@
             <div class="breadcrumb">
                 <a href="{{ url_for('index') }}">题库</a>
                 <span class="breadcrumb-sep">/</span>
+                {% if problem['bank_id'] %}
+                    <a href="{{ url_for('bank', bid=problem['bank_id']) }}">{{ problem['bank_name'] }}</a>
+                    <span class="breadcrumb-sep">/</span>
+                {% endif %}
                 <a href="{{ url_for('problem', pid=problem['id']) }}">#{{ problem['id'] }}</a>
                 <span class="breadcrumb-sep">/</span>
                 <span>IDE</span>
             </div>
-            <h1>{{ problem['title'] }}</h1>
+            <h1>
+                {{ problem['title'] }}
+                {% set diff = problem['difficulty'] if problem['difficulty'] in difficulties else '简单' %}
+                <span class="difficulty difficulty-{{ difficulties[diff]['slug'] }}">{{ diff }}</span>
+            </h1>
             <p class="page-sub meta-inline">
                 <span>时间限制 <strong class="mono">{{ problem['time_limit_ms'] }} ms</strong></span>
                 <span>内存限制 <strong class="mono">{{ problem['memory_limit_kb'] }} KB</strong></span>
@@ -48,17 +61,10 @@
             <button class="button" type="submit">提交评测</button>
         </div>
 
-        <div class="editor-shell">
-            <div class="editor-gutter" id="editor-gutter" aria-hidden="true"></div>
-            <div class="editor-wrap" id="editor-wrap">
-                <textarea id="code-editor" name="code" class="ide-code" spellcheck="false"
-                          wrap="off" autocapitalize="off" autocomplete="off"
-                          data-problem-id="{{ problem['id'] }}"
-                          placeholder="在此编写代码……"></textarea>
-                <div class="completion-popup" id="completion-popup" hidden>
-                    <div class="completion-list" id="completion-list" role="listbox" aria-label="语法补全"></div>
-                </div>
-            </div>
+        <div class="editor-shell" id="editor-shell">
+            <textarea id="code-editor" name="code" class="ide-code-fallback" spellcheck="false"
+                      autocapitalize="off" autocomplete="off"
+                      data-problem-id="{{ problem['id'] }}"></textarea>
         </div>
 
         <div class="ide-statusbar">
@@ -67,4 +73,15 @@
         </div>
     </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/codemirror/lib/codemirror.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/mode/clike/clike.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/mode/python/python.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/hint/show-hint.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/edit/closebrackets.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/edit/matchbrackets.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/codemirror/addon/selection/active-line.js') }}"></script>
+<script src="{{ url_for('static', filename='js/ide-editor.js') }}"></script>
 {% endblock %}

@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}OpenOJ{% endblock %}</title>
     <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/katex/katex.min.css') }}">
+    {% block head_extra %}{% endblock %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
@@ -15,7 +17,7 @@
         </a>
         {% set ep = request.endpoint or '' %}
         <nav class="nav-links" aria-label="主导航">
-            <a href="{{ url_for('index') }}" class="{{ 'active' if ep in ['index', 'problem', 'problem_ide'] else '' }}">题目</a>
+            <a href="{{ url_for('index') }}" class="{{ 'active' if ep in ['index', 'search', 'bank', 'problem', 'problem_ide', 'discussions', 'discussion_new', 'discussion_detail'] else '' }}">题库</a>
             <a href="{{ url_for('submissions') }}" class="{{ 'active' if ep in ['submissions', 'submission'] else '' }}">提交记录</a>
             <a href="{{ url_for('leaderboard') }}" class="{{ 'active' if ep == 'leaderboard' else '' }}">排行榜</a>
         </nav>
@@ -59,6 +61,9 @@
 {% endblock %}
 
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+<script defer src="{{ url_for('static', filename='vendor/katex/katex.min.js') }}"></script>
+<script defer src="{{ url_for('static', filename='vendor/katex/contrib/auto-render.min.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/math.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

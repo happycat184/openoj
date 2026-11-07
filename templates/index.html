@@ -5,14 +5,27 @@
 <div class="page-head">
     <div>
         <h1>题库</h1>
-        <p class="page-sub">选择题目开始练习。OpenOJ 当前支持 C、C++ 与 Python。</p>
+        <p class="page-sub">搜索题目，或浏览题库开始练习。OpenOJ 当前支持 C、C++ 与 Python。</p>
     </div>
     {% if g.user and g.user['role'] == 'admin' %}
-        <a class="button button-secondary" href="{{ url_for('admin_problem_new') }}">新建题目</a>
+        <div class="head-actions">
+            <a class="button button-secondary" href="{{ url_for('admin_banks') }}">管理题库</a>
+            <a class="button button-secondary" href="{{ url_for('admin_problem_new') }}">新建题目</a>
+        </div>
     {% endif %}
 </div>
 
+<form class="search-bar" method="get" action="{{ url_for('search') }}" role="search">
+    <input class="search-input" type="search" name="q" maxlength="100"
+           placeholder="搜索题目标题、描述或题库……" aria-label="搜索题目">
+    <button class="button" type="submit">搜索</button>
+</form>
+
 <div class="stat-strip">
+    <div class="stat-item">
+        <div class="stat-label">题库</div>
+        <div class="stat-value">{{ stats.banks }}</div>
+    </div>
     <div class="stat-item">
         <div class="stat-label">题目</div>
         <div class="stat-value">{{ stats.problems }}</div>
@@ -27,42 +40,62 @@
     </div>
 </div>
 
-<div class="table-wrap">
-    <table class="data problem-table">
-        <thead>
-        <tr>
-            <th class="col-id">编号</th>
-            <th>题目</th>
-            <th class="col-num">通过率</th>
-            <th class="col-num">时间限制</th>
-            <th class="col-num">内存限制</th>
-            <th class="col-state">我的状态</th>
-        </tr>
-        </thead>
-        <tbody>
-        {% for p in problems %}
+<div class="home-block">
+    <div class="list-head">
+        <h2>随机推荐</h2>
+        <a class="section-link" href="{{ url_for('index') }}">换一批</a>
+    </div>
+    {% with problems = random_problems, show_bank = true, empty_message = '暂无可见题目。' %}
+        {% include "_problem_table.html" %}
+    {% endwith %}
+</div>
+
+<div class="home-block">
+    <div class="list-head">
+        <h2>全部题库</h2>
+        <span class="section-meta">共 {{ banks|length }} 个</span>
+    </div>
+    <div class="table-wrap">
+        <table class="data bank-table">
+            <thead>
             <tr>
-                <td class="mono muted">#{{ p.id }}</td>
-                <td><a class="problem-link" href="{{ url_for('problem', pid=p.id) }}">{{ p.title }}</a></td>
-                <td class="mono col-num">{{ '%.1f%%'|format(p.ac_rate) if p.ac_rate is not none else '—' }}</td>
-                <td class="mono col-num">{{ p.time_limit_ms }} ms</td>
-                <td class="mono col-num">{{ p.memory_limit_kb }} KB</td>
-                <td>
-                    {% if p.user_status == 'solved' %}
-                        <span class="user-state state-solved">已通过</span>
-                    {% elif p.user_status == 'attempted' %}
-                        <span class="user-state state-attempted">尝试过</span>
-                    {% else %}
-                        <span class="muted">—</span>
-                    {% endif %}
-                </td>
+                <th class="col-id">编号</th>
+                <th>题库</th>
+                <th>简介</th>
+                <th class="col-num">题目数</th>
+                <th class="col-state">我的进度</th>
             </tr>
-        {% else %}
-            <tr>
-                <td colspan="6" class="empty-cell">暂无可见题目。</td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+            {% for bank in banks %}
+                <tr>
+                    <td class="mono muted">#{{ bank.id }}</td>
+                    <td>
+                        <a class="problem-link" href="{{ url_for('bank', bid=bank.id) }}">{{ bank.name }}</a>
+                    </td>
+                    <td class="bank-description">{{ bank.description if bank.description else '—' }}</td>
+                    <td class="mono col-num">{{ bank.visible_count }}</td>
+                    <td>
+                        {% if g.user %}
+                            {% if bank.visible_count and bank.solved >= bank.visible_count %}
+                                <span class="user-state state-solved">{{ bank.solved }} / {{ bank.visible_count }}</span>
+                            {% elif bank.attempted %}
+                                <span class="user-state state-attempted">{{ bank.solved }} / {{ bank.visible_count }}</span>
+                            {% else %}
+                                <span class="mono muted">0 / {{ bank.visible_count }}</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="5" class="empty-cell">暂无题库。</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% endblock %}

@@ -6,7 +6,7 @@
 <div class="page-head">
     <div>
         <h1>管理控制台</h1>
-        <p class="page-sub">管理题目、测试点与用户权限。</p>
+        <p class="page-sub">管理题库、题目、测试点与用户权限。</p>
     </div>
 </div>
 
@@ -16,6 +16,10 @@
     <div class="stat-item">
         <div class="stat-label">注册用户</div>
         <div class="stat-value">{{ stats.users }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-label">题库总数</div>
+        <div class="stat-value">{{ stats.banks }}</div>
     </div>
     <div class="stat-item">
         <div class="stat-label">题目总数</div>
@@ -31,13 +35,29 @@
     </div>
 </div>
 
+<div class="stat-strip stat-strip-4">
+    <div class="stat-item">
+        <div class="stat-label">评测线程</div>
+        <div class="stat-value">{{ judge_queue.workers }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-label">运行中</div>
+        <div class="stat-value">{{ judge_queue.running }}</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-label">排队中</div>
+        <div class="stat-value">{{ judge_queue.queued }}</div>
+    </div>
+</div>
+
 <section class="section">
     <div class="section-head">
         <h2>快捷操作</h2>
     </div>
     <div class="action-row">
         <a class="button" href="{{ url_for('admin_problem_new') }}">新建题目</a>
-        <a class="button button-secondary" href="{{ url_for('admin_problem_import') }}">导入题库</a>
+        <a class="button button-secondary" href="{{ url_for('admin_banks') }}">题库管理</a>
+        <a class="button button-secondary" href="{{ url_for('admin_problem_import') }}">导入题目</a>
         <a class="button button-secondary" href="{{ url_for('admin_problems') }}">题目管理</a>
         <a class="button button-secondary" href="{{ url_for('admin_users') }}">用户管理</a>
         <a class="button button-secondary" href="{{ url_for('submissions') }}">全部提交</a>
