@@ -21,6 +21,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 WORK_DIR = os.path.join(BASE_DIR, "work")
 COMPILE_TIMEOUT = 15
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+RUN_OUTPUT_LIMIT = 64 * 1024
+RUN_SLOTS = 2
 
 SOURCE_NAMES = {
     "c": "main.c",
@@ -35,6 +37,7 @@ except ValueError:
 
 _JUDGE_QUEUE = queue.Queue()
 _QUEUE_LOCK = threading.Lock()
+_RUN_SLOTS = threading.BoundedSemaphore(RUN_SLOTS)
 _QUEUED_IDS = set()
 _RUNNING_IDS = set()
 _WORKERS = []
@@ -156,7 +159,6 @@ def _has_python_traceback(stderr_path):
 def _run_case(command, workdir, input_path, output_path, stderr_path,
               time_limit_ms, memory_limit_kb):
     """运行单个测试点，返回 (killed_reason, returncode, time_ms, peak_kb)。"""
-    start = time.perf_counter()
     peak_kb = 0.0
     killed = None
     killed_at_ms = None
@@ -172,6 +174,9 @@ def _run_case(command, workdir, input_path, output_path, stderr_path,
             env=_CHILD_ENV,
             creationflags=CREATE_NO_WINDOW,
         )
+        # 进程创建可能被安全软件扫描阻塞数秒，计时从创建完成后开始，
+        # 避免把环境开销计入被测程序运行时间。
+        start = time.perf_counter()
         try:
             while True:
                 returncode = proc.poll()
@@ -279,6 +284,100 @@ def _finish(conn, submission_id, status, time_ms, memory_kb, note=""):
         (status, round(time_ms, 2), round(memory_kb, 2), note, db.now_str(), submission_id),
     )
     conn.commit()
+
+
+def _read_limited(path, limit=RUN_OUTPUT_LIMIT):
+    """读取文本文件并截断到 limit 字节，返回 (text, truncated)。"""
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read(limit + 1)
+    except OSError:
+        return "", False
+    truncated = len(data) > limit
+    return data[:limit].decode("utf-8", "replace"), truncated
+
+
+def run_custom(language, source, input_data, time_limit_ms, memory_limit_kb,
+               expected_output=None):
+    """在临时目录中编译并运行一次代码，供 IDE 自测使用。
+
+    expected_output 为 None 时只运行不比对，状态为 OK；
+    提供期望输出时，按行比对得到 AC / WA。结果不写入数据库。
+    """
+    result = {
+        "status": "ULE",
+        "time_ms": 0.0,
+        "memory_kb": 0.0,
+        "stdout": "",
+        "stderr": "",
+        "compile_output": "",
+        "expected": expected_output or "",
+        "truncated": False,
+    }
+
+    source_name = SOURCE_NAMES.get(language)
+    if source_name is None:
+        result["compile_output"] = f"不支持的语言：{language}"
+        return result
+
+    with _RUN_SLOTS:
+        os.makedirs(WORK_DIR, exist_ok=True)
+        workdir = tempfile.mkdtemp(prefix="run_", dir=WORK_DIR)
+        try:
+            with open(os.path.join(workdir, source_name), "w",
+                      encoding="utf-8", newline="\n") as handle:
+                handle.write(source)
+
+            compile_cmd, run_cmd = _build_commands(language, workdir)
+            if compile_cmd is not None:
+                ok, output = _run_compile(compile_cmd, workdir)
+                if not ok:
+                    result["status"] = "CE"
+                    result["compile_output"] = output.strip()[-10000:] or "编译失败。"
+                    return result
+
+            input_path = os.path.join(workdir, "run.in")
+            output_path = os.path.join(workdir, "run.out")
+            stderr_path = os.path.join(workdir, "run.err")
+            with open(input_path, "wb") as handle:
+                handle.write(input_data.encode("utf-8"))
+
+            killed, returncode, elapsed_ms, peak_kb = _run_case(
+                run_cmd,
+                workdir,
+                input_path,
+                output_path,
+                stderr_path,
+                time_limit_ms,
+                memory_limit_kb,
+            )
+
+            stdout, out_truncated = _read_limited(output_path)
+            stderr, err_truncated = _read_limited(stderr_path)
+            result["time_ms"] = round(elapsed_ms, 2)
+            result["memory_kb"] = round(peak_kb, 2)
+            result["stdout"] = stdout.replace("\r\n", "\n").replace("\r", "\n")
+            result["stderr"] = stderr.replace("\r\n", "\n").replace("\r", "\n")
+            result["truncated"] = out_truncated or err_truncated
+
+            if killed in ("TLE", "MLE"):
+                result["status"] = killed
+            elif returncode != 0:
+                result["status"] = "ULE"
+            elif expected_output is None:
+                result["status"] = "OK"
+            else:
+                result["status"] = (
+                    "AC" if _outputs_match(stdout, expected_output) else "WA"
+                )
+            return result
+        except Exception as exc:  # 自测失败不应让接口 500
+            traceback.print_exc()
+            result["status"] = "ULE"
+            result["compile_output"] = f"运行内部错误：{exc}"
+            return result
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
 
 
 def judge_submission(submission_id):

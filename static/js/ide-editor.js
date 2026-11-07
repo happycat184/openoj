@@ -267,6 +267,248 @@
 
     window.addEventListener("beforeunload", saveDraft);
 
+    /* ---------------------------------------------------- self-test run */
+    var testPanel = document.getElementById("test-panel");
+    var testToggle = document.getElementById("test-toggle");
+    var testRunButton = document.getElementById("test-run");
+    var testStatus = document.getElementById("test-status");
+    var testMeta = document.getElementById("test-meta");
+    var testStdout = document.getElementById("test-stdout");
+    var testExtra = document.getElementById("test-extra");
+    var testExtraLabel = document.getElementById("test-extra-label");
+    var testExtraPre = document.getElementById("test-extra-pre");
+    var testNote = document.getElementById("test-note");
+    var testSampleInput = document.getElementById("test-input-sample");
+    var testCustomInput = document.getElementById("test-input-custom");
+    var testTabs = testPanel ? testPanel.querySelectorAll(".test-tab") : [];
+    var csrfField = submitForm ? submitForm.querySelector('input[name="csrf_token"]') : null;
+    var testMode = "sample";
+    var testRunning = false;
+
+    var RUN_STATUS = {
+        OK: "运行完成",
+        AC: "通过",
+        WA: "答案错误",
+        CE: "编译错误",
+        TLE: "超时",
+        MLE: "超内存",
+        ULE: "运行错误"
+    };
+    var RUN_FAILED = { WA: true, CE: true, TLE: true, MLE: true, ULE: true };
+
+    function setTestStatus(status, fallbackLabel) {
+        if (!testStatus) {
+            return;
+        }
+        testStatus.textContent = fallbackLabel || RUN_STATUS[status] || status;
+        testStatus.className = "test-status";
+        if (status === "AC" || status === "OK") {
+            testStatus.className += " test-ok";
+        } else if (RUN_FAILED[status]) {
+            testStatus.className += " test-bad";
+        }
+    }
+
+    function showTestExtra(label, text) {
+        if (!testExtra || !testExtraPre || !testExtraLabel) {
+            return;
+        }
+        if (!text) {
+            testExtra.hidden = true;
+            testExtraPre.textContent = "";
+            return;
+        }
+        testExtra.hidden = false;
+        testExtraLabel.textContent = label;
+        testExtraPre.textContent = text;
+    }
+
+    function setTestMode(mode) {
+        testMode = mode;
+        var sample = mode === "sample";
+        for (var i = 0; i < testTabs.length; i++) {
+            testTabs[i].className = testTabs[i].dataset.testMode === mode
+                ? "test-tab is-active"
+                : "test-tab";
+        }
+        if (testSampleInput) {
+            testSampleInput.hidden = !sample;
+        }
+        if (testCustomInput) {
+            testCustomInput.hidden = sample;
+        }
+        if (testNote) {
+            testNote.textContent = sample ? "将与样例输出比对" : "仅运行，不比对输出";
+        }
+        var active = sample ? testSampleInput : testCustomInput;
+        if (active && testPanel && !testPanel.hidden) {
+            active.focus();
+        }
+    }
+
+    function openTestPanel() {
+        if (!testPanel) {
+            return;
+        }
+        testPanel.hidden = false;
+        editor.refresh();
+    }
+
+    function finishTestRun(message) {
+        testRunning = false;
+        if (testRunButton) {
+            testRunButton.disabled = false;
+            testRunButton.textContent = "运行";
+        }
+        if (message && testStdout) {
+            testStdout.textContent = message;
+        }
+    }
+
+    function renderTestResult(result) {
+        if (!result || !result.status) {
+            setTestStatus("ULE", "运行失败");
+            if (testStdout) {
+                testStdout.textContent = "服务器返回了无法识别的结果。";
+            }
+            showTestExtra("", "");
+            return;
+        }
+        setTestStatus(result.status);
+        if (testMeta) {
+            testMeta.textContent = Number(result.time_ms || 0).toFixed(2) + " ms / " +
+                Math.round(Number(result.memory_kb || 0)) + " KB" +
+                (result.truncated ? "（输出已截断）" : "");
+        }
+        if (result.status === "CE") {
+            if (testStdout) {
+                testStdout.textContent = result.compile_output || "编译失败。";
+            }
+            showTestExtra("", "");
+            return;
+        }
+        if (testStdout) {
+            testStdout.textContent = result.stdout || "（无输出）";
+        }
+        if (result.stderr) {
+            showTestExtra("标准错误", result.stderr);
+        } else if (result.status === "WA" && result.expected) {
+            showTestExtra("样例期望输出", result.expected);
+        } else {
+            showTestExtra("", "");
+        }
+    }
+
+    function runTest() {
+        if (!testPanel || !csrfField || testRunning) {
+            return;
+        }
+        openTestPanel();
+        if (!testStdout) {
+            return;
+        }
+
+        var code = editor.getValue();
+        if (!code.trim()) {
+            setTestStatus("ULE", "无法运行");
+            if (testMeta) {
+                testMeta.textContent = "";
+            }
+            testStdout.textContent = "请先编写代码。";
+            showTestExtra("", "");
+            return;
+        }
+
+        saveDraft();
+        testRunning = true;
+        if (testRunButton) {
+            testRunButton.disabled = true;
+            testRunButton.textContent = "运行中…";
+        }
+        setTestStatus("", "运行中…");
+        if (testMeta) {
+            testMeta.textContent = "";
+        }
+        testStdout.textContent = "正在编译并运行…";
+        showTestExtra("", "");
+
+        var payload = {
+            problem_id: problemId,
+            language: languageSelect.value,
+            code: code,
+            mode: testMode,
+            input: testMode === "custom" ? testCustomInput.value : ""
+        };
+
+        fetch("/api/run", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-Token": csrfField.value
+            },
+            body: JSON.stringify(payload)
+        }).then(function (response) {
+            if (response.redirected) {
+                throw new Error("请先登录后再运行代码。");
+            }
+            var contentType = response.headers.get("content-type") || "";
+            if (contentType.indexOf("application/json") === -1) {
+                throw new Error("运行请求失败（HTTP " + response.status + "）。");
+            }
+            return response.json().catch(function () {
+                return null;
+            }).then(function (body) {
+                if (!response.ok) {
+                    throw new Error(
+                        (body && body.error) ||
+                        "运行请求失败（HTTP " + response.status + "）。"
+                    );
+                }
+                return body;
+            });
+        }).then(function (result) {
+            renderTestResult(result);
+            finishTestRun("");
+        }).catch(function (error) {
+            setTestStatus("ULE", "运行失败");
+            if (testMeta) {
+                testMeta.textContent = "";
+            }
+            testStdout.textContent = error && error.message
+                ? error.message
+                : "网络错误，请重试。";
+            showTestExtra("", "");
+            finishTestRun("");
+        });
+    }
+
+    if (testToggle) {
+        testToggle.addEventListener("click", function () {
+            if (testPanel.hidden) {
+                openTestPanel();
+            } else {
+                testPanel.hidden = true;
+                editor.refresh();
+            }
+        });
+    }
+    if (testRunButton) {
+        testRunButton.addEventListener("click", runTest);
+    }
+    document.addEventListener("keydown", function (event) {
+        if (event.key === "F9" && testPanel) {
+            event.preventDefault();
+            runTest();
+        }
+    });
+    for (var tabIndex = 0; tabIndex < testTabs.length; tabIndex++) {
+        testTabs[tabIndex].addEventListener("click", function () {
+            if (this.dataset.testMode) {
+                setTestMode(this.dataset.testMode);
+            }
+        });
+    }
+
     loadDraft(currentLanguage);
     updateCursor();
     editor.refresh();

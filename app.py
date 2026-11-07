@@ -845,6 +845,62 @@ def submit():
     return redirect(url_for("submission", sid=submission_id))
 
 
+@app.route("/api/run", methods=["POST"])
+@login_required
+def api_run():
+    """IDE 自测：编译并运行一次代码，不生成提交记录。"""
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "请求格式无效。"}), 400
+
+    try:
+        problem_id = int(payload.get("problem_id"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "无效的题目编号。"}), 400
+
+    target = db.get_problem(problem_id)
+    if target is None or (
+        not target["is_visible"] and g.user["role"] != "admin"
+    ):
+        return jsonify({"error": "题目不存在。"}), 404
+
+    language = str(payload.get("language", "")).strip()
+    if language not in LANGUAGE_INFO:
+        return jsonify({"error": "请选择受支持的编程语言。"}), 400
+
+    code = payload.get("code")
+    if not isinstance(code, str) or not code.strip():
+        return jsonify({"error": "代码不能为空。"}), 400
+    if len(code) > 200 * 1024:
+        return jsonify({"error": "代码长度超过限制（200 KB）。"}), 400
+
+    mode = payload.get("mode", "custom")
+    expected = None
+    if mode == "sample":
+        input_data = target["sample_input"] or ""
+        expected = (target["sample_output"] or "").strip() or None
+    else:
+        input_data = payload.get("input") or ""
+        if not isinstance(input_data, str):
+            return jsonify({"error": "输入数据格式无效。"}), 400
+    if len(input_data) > 64 * 1024:
+        return jsonify({"error": "输入数据超过限制（64 KB）。"}), 400
+
+    result = judge.run_custom(
+        language,
+        code,
+        input_data,
+        target["time_limit_ms"],
+        target["memory_limit_kb"],
+        expected_output=expected,
+    )
+    result["limits"] = {
+        "time_limit_ms": target["time_limit_ms"],
+        "memory_limit_kb": target["memory_limit_kb"],
+    }
+    return jsonify(result)
+
+
 @app.route("/submission/<int:sid>")
 def submission(sid):
     row = db.get_submission(sid)

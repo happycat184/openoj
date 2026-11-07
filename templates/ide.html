@@ -58,6 +58,7 @@
             </select>
             <span class="ide-draft">草稿自动保存</span>
             <span class="ide-cursor" id="editor-cursor">行 1，列 1</span>
+            <button class="button button-secondary" type="button" id="test-toggle">运行测试</button>
             <button class="button" type="submit">提交评测</button>
         </div>
 
@@ -67,8 +68,39 @@
                       data-problem-id="{{ problem['id'] }}"></textarea>
         </div>
 
+        <div class="ide-test-panel" id="test-panel" hidden>
+            <div class="test-head">
+                <div class="test-tabs">
+                    <button type="button" class="test-tab is-active" data-test-mode="sample">样例输入</button>
+                    <button type="button" class="test-tab" data-test-mode="custom">自定义输入</button>
+                </div>
+                <span class="test-note" id="test-note">将与样例输出比对</span>
+                <button class="button button-small" type="button" id="test-run">运行</button>
+            </div>
+            <div class="test-body">
+                <div class="test-pane">
+                    <label class="test-label" for="test-input-sample">输入</label>
+                    <textarea id="test-input-sample" class="test-input" readonly
+                              spellcheck="false">{{ problem['sample_input'] }}</textarea>
+                    <textarea id="test-input-custom" class="test-input" spellcheck="false"
+                              placeholder="在此输入自测数据，可为空" hidden></textarea>
+                </div>
+                <div class="test-pane">
+                    <div class="test-result-head">
+                        <span class="test-status" id="test-status">尚未运行</span>
+                        <span class="test-meta" id="test-meta"></span>
+                    </div>
+                    <pre class="test-pre" id="test-stdout">运行后在此显示输出。</pre>
+                    <div class="test-extra" id="test-extra" hidden>
+                        <span class="test-label" id="test-extra-label">标准错误</span>
+                        <pre class="test-pre" id="test-extra-pre"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="ide-statusbar">
-            <span>Enter 自动缩进 · Ctrl+Enter 提交 · Ctrl+Space 补全</span>
+            <span>Enter 自动缩进 · F9 自测运行 · Ctrl+Enter 提交 · Ctrl+Space 补全</span>
             <span>{{ problem['time_limit_ms'] }} ms / {{ problem['memory_limit_kb'] }} KB</span>
         </div>
     </form>
