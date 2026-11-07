@@ -113,6 +113,42 @@ python app.py
 
 **首次登录后请立即在个人主页修改密码。**
 
+## 一键安装脚本
+
+`script/` 目录提供交互式安装向导，使用 `↑` / `↓` 选择、`Enter` 确认。
+「一键安装」的流程是：
+
+1. 询问安装位置（默认 `~/OpenOJ`，可直接回车）
+2. 从 GitHub 克隆 `https://github.com/happycat184/openoj.git` 到该位置
+3. 安装 Python 3.10+ 与 GCC/G++（已安装则跳过）
+4. 创建 `.venv` 虚拟环境并安装 `requirements.txt` 中的依赖
+
+Windows（PowerShell）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File script\install.ps1
+```
+
+Linux / macOS：
+
+```bash
+bash script/install.sh
+```
+
+说明：
+
+- 目标目录为空或不存在时执行克隆；目录中已有本项目时不会重复克隆，可选择是否 `git pull`
+- 安装路径会保存到 `%APPDATA%\OpenOJ\install-path.txt`（Windows）
+  或 `~/.config/openoj/install-path`（Linux / macOS），下次启动自动读取
+- 克隆需要 git，未安装时会尝试自动安装
+- Windows 通过 `winget` 安装 Python、Git 和 GCC（WinLibs，失败时回退 MSYS2）
+- Debian/Ubuntu、Fedora、Arch、openSUSE、Alpine 使用对应包管理器安装，需要 `sudo`
+- macOS 使用 Homebrew 安装 Python，GCC 由 Xcode Command Line Tools 提供
+- 在 Git Bash 中运行时会提示切换到 PowerShell 版向导
+- 可通过环境变量 `OPENOJ_REPO_URL` 指定其他仓库地址（用于镜像或 Fork）
+- 仅检查环境而不安装：`powershell -ExecutionPolicy Bypass -File script\install.ps1 -Check`
+  或 `bash script/install.sh --check`
+
 ## 目录结构
 
 ```
@@ -120,6 +156,9 @@ OpenOJ/
 ├── app.py              # Flask 路由、登录鉴权、后台管理
 ├── db.py               # SQLite 数据层、建表与示例数据
 ├── judge.py            # 评测引擎：编译、执行、限时/限内存、输出比对
+├── script/
+│   ├── install.ps1     # Windows 交互式安装向导
+│   └── install.sh      # Linux / macOS 交互式安装向导
 ├── openoj.db           # 运行时自动生成
 ├── work/               # 评测临时工作目录（自动创建/清理）
 ├── static/
